@@ -22,7 +22,14 @@ def main():
     chatWithMemory, sessionId = chatBot.initialize_chatbot(userId)
 
     while True:
-        print(chatBot.chatBot(chatWithMemory, sessionId))
+        user_input = input("\nInput a question: ")
+        if user_input.lower() in ["exit", "quit"]:
+            print("Goodbye!")
+            break
+
+        if not user_input.strip():
+            continue
+        print(chatBot.chatBot(chatWithMemory, sessionId, user_input))
     
 
 

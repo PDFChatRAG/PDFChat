@@ -3,6 +3,13 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 import utils
+from vectorDB import create_vector_store, add_documents_to_vector_store, create_retriever_tool
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from DataSource import processFile, splitTextIntoChunks
+from langchain_core.documents import Document 
+from langchain.agents import create_agent
+
+
 
 def initialize_chatbot(userId):
     sessionId = userId
@@ -35,16 +42,36 @@ def initialize_chatbot(userId):
     )
     return chainWithHistory, sessionId
 
-def chatBot(chainWithHistory, sessionId):
-    print("Input prompt to the model:")
-    humanMessage = input().strip()
-    if not humanMessage:
-        return "Please enter a message."
+def chatBot(chainWithHistory, sessionId, user_input):
+
+    vector_store = create_vector_store(GoogleGenerativeAIEmbeddings(model="models/text-embedding-004"), "documents_collection")
+    text = processFile("bill.pdf")
+
     
-    response = chainWithHistory.invoke(
-        {"input": humanMessage}, 
-        config={"configurable": {"session_id": sessionId}}
+    chunks = splitTextIntoChunks(text)
+    docs = [Document(page_content=chunk) for chunk in chunks]
+
+    ids = [f"chunk-{i}" for i in range(len(docs))]
+    add_documents_to_vector_store(vector_store, docs, ids)
+
+    model = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
+    system_msg = (
+    "You have access to a tool that retrieves context from a document. "
+    "Use the tool to help answer user queries."
     )
+    pdf_tool = create_retriever_tool(vector_store)
+    tools = [pdf_tool]
+
+    agent = create_agent(model, tools, system_prompt=system_msg)
+    print("\n--- PDF Chat Agent Active ---")
+    print("Type 'exit' or 'quit' to stop.")
+
+    # Run the agent
+    response = agent.invoke({"messages": [("human", user_input)]})
+    
+    # The agent returns a list of messages; the last one is the AI response
+    ai_message = response["messages"][-1].content
+    print(f"\nAgent: {ai_message}")
     current_history = utils.getJsonSessionHistory(sessionId)
     utils.saveHistoryToJson(sessionId, current_history)
-    return response.text
+    return ai_message
