@@ -208,3 +208,6 @@ __marimo__/
 
 # Local history
 /history/**/*.json
+
+# Chroma DB
+**/chroma_db/
