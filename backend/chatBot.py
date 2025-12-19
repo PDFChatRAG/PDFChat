@@ -15,10 +15,18 @@ def initialize_chatbot(userId):
     sessionId = userId
     model = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant that helps a new developer learn to use the Google Generative AI API to create a RAG chatbot."),
+        ("system", "You have access to a tool that retrieves context from a document. Use the tool to help answer user queries."),
         MessagesPlaceholder(variable_name="chat_history"),
         ("human", "{input}"),
     ])
+    vector_store = create_vector_store(GoogleGenerativeAIEmbeddings(model="models/text-embedding-004"), "documents_collection")
+    text = processFile("../resources/bill.pdf")
+    chunks = splitTextIntoChunks(text)
+    docs = [Document(page_content=chunk) for chunk in chunks]
+    ids = [f"chunk-{i}" for i in range(len(docs))]
+    add_documents_to_vector_store(vector_store, docs, ids)
+    pdf_tool = create_retriever_tool(vector_store)
+    tools = [pdf_tool]
     def get_history(session_id):
         return utils.getJsonSessionHistory(session_id)
     
@@ -37,6 +45,7 @@ def initialize_chatbot(userId):
     chainWithHistory = RunnableWithMessageHistory(
         chain,
         get_history,
+        tools=tools,
         inputMessagesKey="input",
         historyMessagesKey="chat_history"
     )
@@ -52,4 +61,4 @@ def chatBot(chainWithHistory, sessionId, humanMessage):
     )
     current_history = utils.getJsonSessionHistory(sessionId)
     utils.saveHistoryToJson(sessionId, current_history)
-    return ai_message
+    return response.text
