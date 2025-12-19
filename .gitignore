@@ -210,4 +210,6 @@ __marimo__/
 /history/**/*.json
 
 # Chroma DB
-**/chroma_db/
+**/chroma_db/**/*
+
+.db
