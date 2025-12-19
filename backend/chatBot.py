@@ -35,9 +35,7 @@ def initialize_chatbot(userId):
     )
     return chainWithHistory, sessionId
 
-def chatBot(chainWithHistory, sessionId):
-    print("Input prompt to the model:")
-    humanMessage = input().strip()
+def chatBot(chainWithHistory, sessionId, humanMessage):
     if not humanMessage:
         return "Please enter a message."
     
