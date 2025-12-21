@@ -45,7 +45,12 @@ class PDFChatGUI:
         
         # Initialize chatbot with user ID
         self.initialize_session()
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
     
+    def on_closing(self):
+        chatBot._memory_manager.__exit__(None, None, None)
+        self.root.destroy()
+
     def initialize_session(self):
         """Initialize chatbot session with user ID"""
         # Create a simple dialog to get user ID

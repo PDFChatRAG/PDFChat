@@ -1,64 +1,45 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
-import utils
-from vectorDB import create_vector_store, add_documents_to_vector_store, create_retriever_tool
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from DataSource import processFile, splitTextIntoChunks
-from langchain_core.documents import Document 
+import os
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain.agents import create_agent
+from langchain_core.tools import create_retriever_tool
+from langchain_classic import hub 
+from vectorDB import initialize_vector_store
+from langgraph.checkpoint.sqlite import SqliteSaver
 
-
+_memory_manager = SqliteSaver.from_conn_string("agent_memory.db")
 
 def initialize_chatbot(userId):
-    sessionId = userId
-    model = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You have access to a tool that retrieves context from a document. Use the tool to help answer user queries."),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{input}"),
-    ])
-    vector_store = create_vector_store(GoogleGenerativeAIEmbeddings(model="models/text-embedding-004"), "documents_collection")
-    text = processFile("../resources/bill.pdf")
-    chunks = splitTextIntoChunks(text)
-    docs = [Document(page_content=chunk) for chunk in chunks]
-    ids = [f"chunk-{i}" for i in range(len(docs))]
-    add_documents_to_vector_store(vector_store, docs, ids)
-    pdf_tool = create_retriever_tool(vector_store)
-    tools = [pdf_tool]
-    def get_history(session_id):
-        return utils.getJsonSessionHistory(session_id)
+    model = ChatGoogleGenerativeAI(model="gemini-3-pro-preview", temperature=0)
     
-    def format_input(x):
-        if isinstance(x, dict):
-            return x
-        return {"input": x}
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+    vectorDatabase = initialize_vector_store(embedding=embeddings, collection_name="vector_DB")
     
-    chain = (
-        RunnableLambda(format_input)
-        | RunnablePassthrough.assign(chat_history=lambda _: [])
-        | prompt
-        | model
-    )
+    pdf_tool = create_retriever_tool(
+        vectorDatabase.as_retriever(), 
+        name="pdf_search", 
+        description="Searches through the uploaded document for specific facts."
+    )    
+    checkpointer = _memory_manager.__enter__()
+    agent = create_agent(
+        model=model, 
+        tools=[pdf_tool], 
+        checkpointer=checkpointer,
+        system_prompt="You are a helpful assistant. Use your tools to answer user queries."
+        )
+    return agent, userId
 
-    chainWithHistory = RunnableWithMessageHistory(
-        chain,
-        get_history,
-        tools=tools,
-        inputMessagesKey="input",
-        historyMessagesKey="chat_history"
-    )
-    return chainWithHistory, sessionId
-
-def chatBot(chainWithHistory, sessionId, humanMessage):
+def chatBot(agent, sessionId, humanMessage):
     if not humanMessage:
         return "Please enter a message."
-    
-    response = chainWithHistory.invoke(
-        {"input": humanMessage}, 
-        config={"configurable": {"session_id": sessionId}}
-    )
-    current_history = utils.getJsonSessionHistory(sessionId)
-    utils.saveHistoryToJson(sessionId, current_history)
-    return response.text
+    config = {"configurable": {"thread_id": sessionId}}
+    inputs = {"messages": [("user", humanMessage)]}
+    response = agent.invoke(inputs, config=config)
+    messages = response.get('messages', [])
+    last_message = messages[-1]
+
+    if isinstance(last_message.content, list):
+        ai_text = next((block['text'] for block in last_message.content if block['type'] == 'text'), "")
+    else:
+        ai_text = last_message.content
+
+    return(ai_text)
