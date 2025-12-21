@@ -213,3 +213,4 @@ __marimo__/
 **/chroma_db/**/*
 
 .db
+agent_memory.db
