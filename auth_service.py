@@ -3,8 +3,8 @@
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+import jwt
+import bcrypt
 import uuid
 
 # Configuration
@@ -12,9 +12,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 7))
-
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+MAX_PASSWORD_LENGTH = 72
 
 
 class AuthService:
@@ -23,12 +21,23 @@ class AuthService:
     @staticmethod
     def hash_password(password: str) -> str:
         """Hash password using bcrypt."""
-        return pwd_context.hash(password)
+        if len(password.encode('utf-8')) > MAX_PASSWORD_LENGTH:
+            raise ValueError("Password is too long")
+        
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+        return hashed.decode('utf-8')
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
         """Verify plain password against hashed password."""
-        return pwd_context.verify(plain_password, hashed_password)
+        try:
+            return bcrypt.checkpw(
+                plain_password.encode('utf-8'), 
+                hashed_password.encode('utf-8')
+            )
+        except ValueError:
+            return False
 
     @staticmethod
     def create_access_token(
@@ -101,7 +110,7 @@ class AuthService:
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             return payload
-        except JWTError:
+        except jwt.PyJWTError:
             return None
 
     @staticmethod

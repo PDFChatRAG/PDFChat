@@ -3,7 +3,7 @@ Unit tests for auth_service.py
 """
 import pytest
 from datetime import datetime, timedelta, timezone
-from jose import jwt
+import jwt
 from auth_service import AuthService, SECRET_KEY, ALGORITHM
 
 
@@ -194,10 +194,10 @@ class TestAuthServiceEdgeCases:
         assert auth_service.verify_password(password, hashed) is True
 
     def test_hash_very_long_password(self, auth_service):
-        """Test hashing very long password."""
+        """Test hashing very long password raises error."""
         password = "x" * 1000
-        hashed = auth_service.hash_password(password)
-        assert auth_service.verify_password(password, hashed) is True
+        with pytest.raises(ValueError, match="Password is too long"):
+            auth_service.hash_password(password)
 
     def test_create_token_with_negative_user_id(self, auth_service):
         """Test creating token with negative user_id."""

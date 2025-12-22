@@ -21,7 +21,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session as SQLSession
 from pydantic import BaseModel, EmailStr
 from typing import Annotated
-import passlib.exc
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -239,7 +238,7 @@ def register(req: UserRegisterDTO, db: SQLSession = Depends(get_db)):
 
     try:
         hashed_pw = AuthService.hash_password(req.password)
-    except passlib.exc.PasswordSizeError:
+    except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Password is too long",

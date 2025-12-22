@@ -117,7 +117,7 @@ def valid_jwt_token(test_user, auth_service):
 def expired_jwt_token(auth_service):
     """Create an expired JWT token for testing."""
     from datetime import datetime, timedelta, timezone
-    from jose import jwt
+    import jwt
     from auth_service import SECRET_KEY, ALGORITHM
 
     payload = {
