@@ -5,10 +5,7 @@ from typing import Optional
 from datetime import datetime
 
 
-class SessionRequestDTO(BaseModel):
-    """Request body for creating a session (legacy, not used in new auth)."""
 
-    user_id: str
 
 
 class SessionResponseDTO(BaseModel):

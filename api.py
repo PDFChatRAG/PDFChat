@@ -33,7 +33,7 @@ from chatBot import create_session_chatbot
 from sessionManager import SessionManager
 from session_lifecycle import SessionLifecycle, SessionState, ArchivalPolicy
 from vectorDB import VectorDBService
-from dto.session_dto import SessionRequestDTO, SessionResponseDTO
+from dto.session_dto import SessionResponseDTO
 from dto.chat_dto import ChatRequestDTO, ChatResponseDTO
 from dto.conversation_dto import MessageDTO, ConversationHistoryDTO, PaginatedConversationDTO
 

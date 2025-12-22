@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from io import BytesIO
 
-from vectorDB import VectorDBService, VectorStore
+from vectorDB import VectorDBService
 
 
 class TestVectorDBServiceCollectionName:
@@ -178,46 +178,7 @@ class TestVectorDBServiceSessionIsolation:
         assert name1 != name2
 
 
-class TestVectorStoreBackwardCompatibility:
-    """Test VectorStore legacy class."""
 
-    @patch("vectorDB.Chroma")
-    def test_vector_store_creation(self, mock_chroma):
-        """Test VectorStore creation (legacy)."""
-        mock_embedding = MagicMock()
-        
-        # When creating VectorStore, it calls initialize_vector_store immediately
-        store = VectorStore(
-            embedding=mock_embedding,
-            collection_name="test_collection"
-        )
-        
-        # So vectorDB is already initialized
-        assert store.vectorDB is not None
-        mock_chroma.assert_called()
-
-    @patch("vectorDB.Chroma")
-    @patch("vectorDB.dataSource.splitTextIntoChunks")
-    @patch("vectorDB.dataSource.processFile")
-    def test_vector_store_add_documents(self, mock_process, mock_split, mock_chroma):
-        """Test VectorStore add_documents method."""
-        mock_embedding = MagicMock()
-        mock_process.return_value = "Content"
-        mock_split.return_value = ["Chunk 1"]
-        
-        # Mock Chroma instance returned by Chroma() constructor
-        mock_vectordb_instance = MagicMock()
-        mock_chroma.return_value = mock_vectordb_instance
-        
-        store = VectorStore(
-            embedding=mock_embedding,
-            collection_name="test_collection"
-        )
-        
-        store.add_documents_to_vector_store("test.pdf")
-        
-        # Assert methods called on the instance
-        mock_vectordb_instance.add_documents.assert_called()
 
 
 class TestVectorDBServiceEdgeCases:

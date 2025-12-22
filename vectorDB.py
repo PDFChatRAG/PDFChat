@@ -149,48 +149,7 @@ class VectorDBService:
         return vectordb.as_retriever()
 
 
-# Legacy class for backward compatibility during migration
-class VectorStore:
-    """Legacy vector store class - use VectorDBService for new code."""
 
-    def __init__(self, embedding, collection_name):
-        self.embedding = embedding
-        self.collection_name = collection_name
-        self.vectorDB = None
-        self.initialize_vector_store()
-
-    def create_vector_store(self):
-        return Chroma(
-            collection_name=self.collection_name,
-            embedding_function=self.embedding,
-            persist_directory=CHROMA_PATH,
-        )
-
-    def initialize_vector_store(self):
-        if self.vectorDB is None:
-            self.vectorDB = self.create_vector_store()
-        return self.vectorDB
-
-    def add_documents_to_vector_store(self, file_path):
-        if self.vectorDB is None:
-            self.initialize_vector_store()
-
-        text = dataSource.processFile(file_path)
-        chunks = dataSource.splitTextIntoChunks(text)
-        docs = [Document(page_content=chunk) for chunk in chunks]
-        ids = [f"chunk-{i}" for i in range(len(docs))]
-        self.vectorDB.add_documents(documents=docs, ids=ids)
-        return self.vectorDB
-
-    def get_vector_store(self):
-        if self.vectorDB is None:
-            self.initialize_vector_store()
-        return self.vectorDB
-
-    def as_retriever(self):
-        if self.vectorDB is None:
-            self.initialize_vector_store()
-        return self.vectorDB.as_retriever()
 
 
 

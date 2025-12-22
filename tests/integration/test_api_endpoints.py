@@ -431,7 +431,7 @@ class TestErrorHandling:
         """Test invalid JSON in request body."""
         response = client.post(
             "/auth/register",
-            data="not json",
+            content="not json",
             headers={"Content-Type": "application/json"},
         )
 
