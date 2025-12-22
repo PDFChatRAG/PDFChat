@@ -122,8 +122,12 @@ class ArchivalPolicy:
         if session.status != SessionState.ACTIVE:
             return False
 
+        updated_at = session.updated_at
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+
         days_since_update = (
-            datetime.now(timezone.utc) - session.updated_at
+            datetime.now(timezone.utc) - updated_at
         ).days
 
         return days_since_update >= ArchivalPolicy.INACTIVITY_DAYS
@@ -134,8 +138,12 @@ class ArchivalPolicy:
         if session.status != SessionState.ARCHIVED or not session.archived_at:
             return False
 
+        archived_at = session.archived_at
+        if archived_at.tzinfo is None:
+            archived_at = archived_at.replace(tzinfo=timezone.utc)
+
         days_since_archival = (
-            datetime.now(timezone.utc) - session.archived_at
+            datetime.now(timezone.utc) - archived_at
         ).days
 
         return days_since_archival >= ArchivalPolicy.RETENTION_DAYS

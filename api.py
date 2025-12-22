@@ -21,6 +21,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session as SQLSession
 from pydantic import BaseModel, EmailStr
 from typing import Annotated
+import passlib.exc
+
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 from database import init_db, get_db, engine
 from models import Base, User, TokenBlacklist, SessionStatus
@@ -39,6 +43,9 @@ logger = logging.getLogger(__name__)
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 ALLOWED_FILE_TYPES = {".pdf", ".docx", ".txt"}
 CLEANUP_JOB_INTERVAL_HOURS = 24  # Run cleanup daily
+
+# Global instances
+checkpointer = None
 
 
 # DTOs for authentication
@@ -93,10 +100,13 @@ def extract_message_content(msg) -> dict:
 def get_session_conversation(session_id: str, limit: Optional[int] = None) -> dict:
     """Retrieve all messages in a session's conversation from LangGraph checkpoints."""
     try:
-        from langgraph.checkpoint.sqlite import SqliteSaver
-        
-        memory_db = os.getenv("AGENT_MEMORY_DB", "agent_memory.db")
-        checkpointer = SqliteSaver.from_conn_string(memory_db)
+        global checkpointer
+        if not checkpointer:
+            # Fallback if checkpointer not initialized (e.g. tests without lifespan)
+            memory_db = os.getenv("AGENT_MEMORY_DB", "agent_memory.db")
+            checkpointer = SqliteSaver.from_conn_string(memory_db)
+            checkpointer.__enter__()
+
         config = {"configurable": {"thread_id": session_id}}
         all_checkpoints = list(checkpointer.list(config, limit=None))
 
@@ -142,6 +152,13 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
 
+    # Initialize global checkpointer
+    global checkpointer
+    memory_db = os.getenv("AGENT_MEMORY_DB", "agent_memory.db")
+    checkpointer_manager = SqliteSaver.from_conn_string(memory_db)
+    checkpointer = checkpointer_manager.__enter__()
+    logger.info("Memory checkpointer initialized")
+
     # TODO: Initialize APScheduler for cleanup job
     # scheduler = BackgroundScheduler()
     # scheduler.add_job(
@@ -156,6 +173,15 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down PDFChat application...")
+    if checkpointer:
+        try:
+            # We need the manager to exit, but we only have the entered object.
+            # SqliteSaver context manager returns self.
+            # So checkpointer is the manager instance.
+            checkpointer.__exit__(None, None, None)
+            logger.info("Memory checkpointer closed")
+        except Exception as e:
+            logger.warning(f"Error closing checkpointer: {e}")
     # TODO: scheduler.shutdown()
 
 
@@ -211,10 +237,18 @@ def register(req: UserRegisterDTO, db: SQLSession = Depends(get_db)):
             detail="User with this email already exists",
         )
 
+    try:
+        hashed_pw = AuthService.hash_password(req.password)
+    except passlib.exc.PasswordSizeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password is too long",
+        )
+
     # Create user
     user = User(
         email=req.email,
-        hashed_password=AuthService.hash_password(req.password),
+        hashed_password=hashed_pw,
     )
     db.add(user)
     db.commit()
@@ -270,13 +304,13 @@ def refresh_token(
     token = authorization[7:]  # Remove "Bearer " prefix
     payload = AuthService.decode_token(token)
 
-    if payload is None or payload.get("type") != "refresh":
+    if payload is None or payload.get("token_type") != "refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
         )
 
-    user_id = payload.get("sub")
+    user_id = payload.get("user_id")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -317,7 +351,7 @@ def logout(
             detail="Invalid token",
         )
 
-    user_id = payload.get("sub")
+    user_id = payload.get("user_id")
     expires_at = datetime.fromtimestamp(payload.get("exp"), tz=timezone.utc)
 
     # Add to blacklist
@@ -504,7 +538,13 @@ def chat(
 
     # Create session-specific chatbot
     try:
-        chatbot = create_session_chatbot(user_id, session_id)
+        global checkpointer
+        if not checkpointer:
+             # Just in case lifespan didn't run (e.g. tests)
+             memory_db = os.getenv("AGENT_MEMORY_DB", "agent_memory.db")
+             checkpointer = SqliteSaver.from_conn_string(memory_db).__enter__()
+
+        chatbot = create_session_chatbot(user_id, session_id, checkpointer)
         response = chatbot.chat(req.message)
         chatbot.cleanup()
     except Exception as e:
@@ -574,14 +614,16 @@ def get_chat_history_paginated(
     paginated_messages = all_messages[start_idx:end_idx]
 
     total_pages = (total_count + page_size - 1) // page_size
+    has_more = page < total_pages - 1
 
     return PaginatedConversationDTO(
         session_id=session_id,
         messages=paginated_messages,
         page=page,
         page_size=page_size,
-        total_count=total_count,
+        total_messages=total_count,
         total_pages=total_pages,
+        has_more=has_more,
         checkpoint_count=conv_data.get("checkpoint_count", 0),
         message_count=conv_data.get("message_count", 0),
     )
@@ -647,7 +689,7 @@ async def upload_file(
             user_id,
             tmp_path,
             file.filename,
-            __import__("langchain_google_genai").GoogleGenerativeAIEmbeddings(
+            GoogleGenerativeAIEmbeddings(
                 model="models/text-embedding-004"
             ),
         )

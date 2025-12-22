@@ -2,7 +2,7 @@
 Unit tests for models.py and database interactions.
 """
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from models import User, Session as SessionModel, Document, TokenBlacklist, SessionStatus
@@ -232,8 +232,8 @@ class TestTokenBlacklistModel:
         token = TokenBlacklist(
             jti="jti-123",
             user_id=user.id,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc),
         )
         db_session.add(token)
         db_session.commit()
@@ -270,14 +270,14 @@ class TestTokenBlacklistModel:
         token1 = TokenBlacklist(
             jti=jti,
             user_id=user.id,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc),
         )
         token2 = TokenBlacklist(
             jti=jti,
             user_id=user.id,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc),
         )
 
         db_session.add(token1)

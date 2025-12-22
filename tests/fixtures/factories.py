@@ -1,7 +1,7 @@
 """
 Test data factories for creating model instances.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from faker import Faker
 from sqlalchemy.orm import Session
 
@@ -137,8 +137,8 @@ class TokenBlacklistFactory:
         token = TokenBlacklist(
             jti=jti or fake.uuid4(),
             user_id=user_id,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc),
         )
         db.add(token)
         db.commit()

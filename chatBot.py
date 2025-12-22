@@ -9,30 +9,17 @@ Each session gets its own isolated ChatBot instance with:
 
 import os
 import logging
-from typing import Tuple
+from typing import Tuple, Any
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain.agents import create_agent
 from langchain_core.tools import create_retriever_tool
 from vectorDB import VectorDBService
-from langgraph.checkpoint.sqlite import SqliteSaver
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
 # Load environment variables once
 load_dotenv()
-
-# Global memory manager (shared across all sessions)
-_MEMORY_MANAGER = None
-
-
-def get_memory_manager():
-    """Get or initialize the global memory manager."""
-    global _MEMORY_MANAGER
-    if _MEMORY_MANAGER is None:
-        memory_db = os.getenv("AGENT_MEMORY_DB", "agent_memory.db")
-        _MEMORY_MANAGER = SqliteSaver.from_conn_string(memory_db)
-    return _MEMORY_MANAGER
 
 
 class ChatBot:
@@ -55,9 +42,12 @@ class ChatBot:
         self.checkpointer = None
         logger.info(f"Initialized ChatBot for user {user_id}, session {session_id}")
 
-    def initialize(self) -> "ChatBot":
+    def initialize(self, checkpointer: Any) -> "ChatBot":
         """
         Initialize the agent with session-specific settings.
+
+        Args:
+            checkpointer: LangGraph checkpointer instance for memory
 
         Returns:
             Self for method chaining
@@ -91,9 +81,7 @@ class ChatBot:
             description="Searches through the uploaded documents for specific facts.",
         )
 
-        # Get memory manager and create checkpointer with session-specific thread
-        memory_manager = get_memory_manager()
-        self.checkpointer = memory_manager.__enter__()
+        self.checkpointer = checkpointer
 
         # Create agent with session-isolated thread ID
         self.agent = create_agent(
@@ -159,20 +147,18 @@ class ChatBot:
 
     def cleanup(self):
         """Clean up resources."""
-        if self.checkpointer:
-            try:
-                get_memory_manager().__exit__(None, None, None)
-            except Exception as e:
-                logger.warning(f"Error during cleanup: {e}")
+        # No specific cleanup needed for shared checkpointer
+        pass
 
 
-def create_session_chatbot(user_id: str, session_id: str) -> ChatBot:
+def create_session_chatbot(user_id: str, session_id: str, checkpointer: Any) -> ChatBot:
     """
     Factory function to create a session-specific ChatBot instance.
 
     Args:
         user_id: User identifier
         session_id: Session identifier
+        checkpointer: LangGraph checkpointer
 
     Returns:
         Initialized ChatBot instance
@@ -181,23 +167,5 @@ def create_session_chatbot(user_id: str, session_id: str) -> ChatBot:
         ValueError: If GOOGLE_API_KEY is not set
     """
     chatbot = ChatBot(user_id, session_id)
-    chatbot.initialize()
+    chatbot.initialize(checkpointer)
     return chatbot
-
-
-# Legacy global instance for backward compatibility
-_LEGACY_CHATBOT = None
-
-
-def get_legacy_chatbot() -> ChatBot:
-    """
-    Get or create legacy global ChatBot instance.
-
-    DEPRECATED: Use create_session_chatbot() for new code.
-    This is provided only for backward compatibility.
-    """
-    global _LEGACY_CHATBOT
-    if _LEGACY_CHATBOT is None:
-        _LEGACY_CHATBOT = ChatBot(user_id="legacy", session_id="legacy")
-        _LEGACY_CHATBOT.initialize()
-    return _LEGACY_CHATBOT

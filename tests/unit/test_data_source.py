@@ -191,13 +191,12 @@ class TestSplitTextIntoChunks:
         assert text in " ".join(chunks)
 
     def test_split_respects_chunk_size(self):
-        """Test that chunks respect size limits."""
-        text = "Word " * 1000  # Very long text
-        chunks = splitTextIntoChunks(text, chunk_size=100)
-
-        # Most chunks should be under size limit (accounting for overlap)
+        """Test splitting text respects chunk size."""
+        text = "This is a sentence. " * 50
+        chunks = splitTextIntoChunks(text, chunk_size=100, chunk_overlap=20)
+        
         for chunk in chunks:
-            assert len(chunk) <= 150  # Allow some flexibility for overlap
+            assert len(chunk) <= 100
 
     def test_split_with_overlap(self):
         """Test chunking with overlap."""

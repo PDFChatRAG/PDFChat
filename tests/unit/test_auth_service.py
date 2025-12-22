@@ -117,7 +117,7 @@ class TestAuthServiceTokenValidation:
 
     def test_verify_token_valid(self, auth_service, valid_jwt_token):
         """Test verifying a valid token."""
-        result = auth_service.verify_token(valid_jwt_token)
+        result = auth_service.decode_token(valid_jwt_token)
         assert result is not None
         assert isinstance(result, dict)
         assert "user_id" in result
@@ -133,22 +133,24 @@ class TestAuthServiceTokenValidation:
         # Encode with wrong key
         wrong_token = jwt.encode(payload, "wrong-secret-key", algorithm=ALGORITHM)
 
-        result = auth_service.verify_token(wrong_token)
+        result = auth_service.decode_token(wrong_token)
         assert result is None
 
     def test_verify_token_expired(self, auth_service, expired_jwt_token):
         """Test verifying an expired token."""
-        result = auth_service.verify_token(expired_jwt_token)
+        result = auth_service.decode_token(expired_jwt_token)
+        # expired token decoding fails in decode_token which returns None on JWTError
+        # (assuming jose.jwt raises ExpiredSignatureError which inherits from JWTError)
         assert result is None
 
     def test_get_user_id_from_token(self, auth_service, valid_jwt_token):
         """Test extracting user_id from token."""
-        user_id = auth_service.get_user_id_from_token(valid_jwt_token)
+        user_id, _, _ = auth_service.get_token_claims(valid_jwt_token)
         assert user_id is not None
 
     def test_get_session_id_from_token(self, auth_service, valid_jwt_token):
         """Test extracting session_id from token."""
-        session_id = auth_service.get_session_id_from_token(valid_jwt_token)
+        _, session_id, _ = auth_service.get_token_claims(valid_jwt_token)
         assert session_id is not None
 
     def test_get_token_type_from_token(self, auth_service):
@@ -157,7 +159,7 @@ class TestAuthServiceTokenValidation:
         session_id = "session-111"
         access_token = auth_service.create_access_token(user_id, session_id)
 
-        token_type = auth_service.get_token_type_from_token(access_token)
+        _, _, token_type = auth_service.get_token_claims(access_token)
         assert token_type == "access"
 
     def test_get_jti_from_token(self, auth_service):
@@ -172,12 +174,12 @@ class TestAuthServiceTokenValidation:
 
     def test_get_user_id_from_invalid_token(self, auth_service):
         """Test extracting user_id from invalid token."""
-        user_id = auth_service.get_user_id_from_token("invalid.token.here")
+        user_id, _, _ = auth_service.get_token_claims("invalid.token.here")
         assert user_id is None
 
     def test_get_session_id_from_invalid_token(self, auth_service):
         """Test extracting session_id from invalid token."""
-        session_id = auth_service.get_session_id_from_token("invalid.token.here")
+        _, session_id, _ = auth_service.get_token_claims("invalid.token.here")
         assert session_id is None
 
 

@@ -120,7 +120,7 @@ class TokenBlacklist(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     jti = Column(String(255), unique=True, nullable=False, index=True)  # JWT ID
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
