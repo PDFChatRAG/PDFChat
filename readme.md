@@ -187,20 +187,20 @@ PDFChat now supports a sophisticated session management system similar to ChatGP
 | `chatBot.py` | Factory pattern for creating session-specific ChatBot instances |
 | `api.py` | FastAPI REST API with authentication and multi-session support |
 
-## 🔐 JWT Token Structure
+## 🔐 Authentication
 
-**Access Token Claims:**
-- `sub`: User ID
-- `session_id`: Current session ID
-- `type`: "access"
-- `jti`: JWT ID (for revocation tracking)
-- `exp`: Expiration time (60 minutes default)
+The application uses **Stateful Database Sessions** for authentication.
 
-**Refresh Token Claims:**
-- `sub`: User ID
-- `type`: "refresh"
-- `jti`: JWT ID
-- `exp`: Expiration time (7 days default)
+- **Login**: The server generates a random session token and stores it in the database.
+- **Session Validation**: On every request, the server checks the database to ensure the token is valid and active.
+- **Logout**: The session is deleted from the database, instantly revoking access.
+
+### Session Structure
+The `AuthSession` model tracks:
+- `token`: Unique random string (Session ID)
+- `user_id`: The user who owns the session
+- `chat_session_id`: The active chat context (optional)
+- `expires_at`: When the session expires (default 24 hours)
 
 ## 🛠️ Development
 

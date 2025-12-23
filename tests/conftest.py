@@ -11,7 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 
-from models import Base, User, Session as SessionModel, TokenBlacklist
+from models import Base, User, Session as SessionModel, AuthSession
 from auth_service import AuthService
 from database import get_db
 
@@ -105,29 +105,32 @@ def test_session_data(db_session, test_user):
 
 
 @pytest.fixture
-def valid_jwt_token(test_user, auth_service):
-    """Create a valid JWT token for testing."""
-    return auth_service.create_access_token(
+def valid_auth_token(test_user, auth_service, db_session):
+    """Create a valid session token for testing."""
+    return auth_service.create_session(
+        db=db_session,
         user_id=test_user["user"].id,
-        session_id="test-session-id",
+        chat_session_id=None,
     )
 
 
 @pytest.fixture
-def expired_jwt_token(auth_service):
-    """Create an expired JWT token for testing."""
+def expired_auth_token(db_session, test_user):
+    """Create an expired session token for testing."""
+    from models import AuthSession
     from datetime import datetime, timedelta, timezone
-    import jwt
-    from auth_service import SECRET_KEY, ALGORITHM
-
-    payload = {
-        "user_id": "test-user-id",
-        "session_id": "test-session-id",
-        "token_type": "access",
-        "exp": datetime.now(timezone.utc) - timedelta(hours=1),
-        "iat": datetime.now(timezone.utc) - timedelta(hours=2),
-    }
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    import uuid
+    
+    token = f"expired_token_{uuid.uuid4()}"
+    auth_session = AuthSession(
+        token=token,
+        user_id=test_user["user"].id,
+        chat_session_id=None,
+        expires_at=datetime.now(timezone.utc) - timedelta(hours=1)
+    )
+    db_session.add(auth_session)
+    db_session.commit()
+    return token
 
 
 @pytest.fixture

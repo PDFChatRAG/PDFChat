@@ -13,7 +13,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from database import init_db, get_db
-from models import User, TokenBlacklist, SessionStatus
+from models import User, SessionStatus
 from auth_service import AuthService
 from chatBot import create_session_chatbot
 from sessionManager import SessionManager
@@ -131,53 +131,16 @@ def login(req: UserLoginDTO, db: SQLSession = Depends(get_db)):
     sessions = SessionManager.list_user_sessions(user.id, db, SessionState.ACTIVE, limit=1)
     session_id = sessions[0].id if sessions else SessionManager.create_session(user.id, db).id
 
-    access_token = AuthService.create_access_token(user.id, session_id)
-    refresh_token = AuthService.create_refresh_token(user.id)
+    access_token = AuthService.create_session(db, user.id, session_id)
 
     logger.info(f"User logged in: {user.email}")
 
     return TokenResponseDTO(
         access_token=access_token,
-        refresh_token=refresh_token,
+        refresh_token=None,
     )
 
 
-@app.post("/auth/refresh", response_model=TokenResponseDTO)
-def refresh_token(
-    authorization: Annotated[str, Header()] = None,
-    db: SQLSession = Depends(get_db)
-):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header",
-        )
-    
-    token = authorization[7:]  # Remove "Bearer " prefix
-    payload = AuthService.decode_token(token)
-
-    if payload is None or payload.get("token_type") != "refresh":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token",
-        )
-
-    user_id = payload.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token claims",
-        )
-
-    sessions = SessionManager.list_user_sessions(user_id, db, SessionState.ACTIVE, limit=1)
-    session_id = sessions[0].id if sessions else SessionManager.create_session(user_id, db).id
-
-    new_access_token = AuthService.create_access_token(user_id, session_id)
-
-    return TokenResponseDTO(
-        access_token=new_access_token,
-        refresh_token=token
-    )
 
 
 @app.post("/auth/logout")
@@ -192,28 +155,7 @@ def logout(
         )
     
     token = authorization[7:]  # Remove "Bearer " prefix
-    jti = AuthService.get_jti_from_token(token)
-    payload = AuthService.decode_token(token)
-
-    if not jti or not payload:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-        )
-
-    user_id = payload.get("user_id")
-    expires_at = datetime.fromtimestamp(payload.get("exp"), tz=timezone.utc)
-
-    # Add to blacklist
-    blacklist_entry = TokenBlacklist(
-        jti=jti,
-        user_id=user_id,
-        expires_at=expires_at,
-    )
-    db.add(blacklist_entry)
-    db.commit()
-
-    logger.info(f"User {user_id} logged out")
+    AuthService.delete_session(db, token)
 
     return {"status": "logged out"}
 
@@ -474,7 +416,7 @@ async def upload_file(
     file_content = await file.read()
     if len(file_content) > MAX_FILE_SIZE:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="File too large. Max size is 100MB.",
         )
 

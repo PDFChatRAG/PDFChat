@@ -83,7 +83,7 @@ class TestSessionManagerList:
     def test_list_all_sessions(self, db_session):
         """Test listing all sessions for a user."""
         user, _ = UserFactory.create(db_session)
-        SessionFactory.create_batch(db_session, user_id=user.id, count=3)
+        sessions = [SessionFactory.create(db_session, user_id=user.id) for _ in range(3)]
 
         sessions = SessionManager.list_user_sessions(user.id, db_session)
 
@@ -132,7 +132,7 @@ class TestSessionManagerDocuments:
     def test_get_session_documents(self, db_session):
         """Test getting documents in a session."""
         session = SessionFactory.create(db_session)
-        DocumentFactory.create_batch(db_session, session_id=session.id, count=3)
+        documents = [DocumentFactory.create(db_session, session_id=session.id) for _ in range(3)]
 
         documents = SessionManager.get_session_documents(session.id, session.user_id, db_session)
 
@@ -224,7 +224,7 @@ class TestSessionManagerDelete:
     def test_hard_delete_also_deletes_documents(self, db_session):
         """Test hard delete also removes associated documents."""
         session = SessionFactory.create(db_session)
-        DocumentFactory.create_batch(db_session, session_id=session.id, count=2)
+        documents = [DocumentFactory.create(db_session, session_id=session.id) for _ in range(2)]
         mock_vectordb = MagicMock()
 
         SessionManager.delete_session(session.id, session.user_id, db_session, mock_vectordb)
@@ -247,7 +247,7 @@ class TestSessionManagerEdgeCases:
     def test_list_sessions_with_many_records(self, db_session):
         """Test listing sessions with many records."""
         user, _ = UserFactory.create(db_session)
-        SessionFactory.create_batch(db_session, user_id=user.id, count=100)
+        sessions = [SessionFactory.create(db_session, user_id=user.id) for _ in range(100)]
 
         sessions = SessionManager.list_user_sessions(user.id, db_session, limit=200)
 

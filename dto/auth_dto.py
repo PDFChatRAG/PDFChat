@@ -17,9 +17,9 @@ class UserLoginDTO(BaseModel):
 
 
 class TokenResponseDTO(BaseModel):
-    """Response containing JWT tokens."""
+    """Response containing session token."""
     access_token: str
-    refresh_token: str
+    refresh_token: str | None = None
     token_type: str = "bearer"
 
 

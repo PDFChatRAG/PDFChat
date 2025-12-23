@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 from auth_service import AuthService
 from session_lifecycle import ArchivalPolicy, SessionLifecycle, SessionState
 from models import Session
-import jwt
 
 class TestMiscCoverage:
 
@@ -14,11 +13,6 @@ class TestMiscCoverage:
         """Test verify_password handles ValueError from bcrypt."""
         with patch("bcrypt.checkpw", side_effect=ValueError):
             assert AuthService.verify_password("pass", "hash") is False
-
-    def test_auth_decode_token_error(self):
-        """Test decode_token handles PyJWTError."""
-        with patch("jwt.decode", side_effect=jwt.PyJWTError):
-            assert AuthService.decode_token("invalid") is None
 
     def test_cleanup_job_errors(self):
         """Test cleanup job logging when transitions fail."""

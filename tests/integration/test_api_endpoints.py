@@ -63,7 +63,7 @@ class TestAuthenticationEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
-        assert "refresh_token" in data
+        assert data.get("refresh_token") is None
         assert data["token_type"] == "bearer"
 
     def test_login_invalid_password(self, client, test_user):
@@ -90,42 +90,13 @@ class TestAuthenticationEndpoints:
 
         assert response.status_code == 401
 
-    def test_refresh_token_success(self, client, test_user, auth_service):
-        """Test refreshing access token."""
-        # First login
-        login_response = client.post(
-            "/auth/login",
-            json={
-                "email": test_user["email"],
-                "password": test_user["password"],
-            },
-        )
-        refresh_token = login_response.json()["refresh_token"]
 
-        # Refresh
-        refresh_response = client.post(
-            "/auth/refresh",
-            headers={"Authorization": f"Bearer {refresh_token}"},
-        )
 
-        assert refresh_response.status_code == 200
-        data = refresh_response.json()
-        assert "access_token" in data
-
-    def test_refresh_token_invalid(self, client):
-        """Test refreshing with invalid token."""
-        response = client.post(
-            "/auth/refresh",
-            headers={"Authorization": "Bearer invalid.token.here"},
-        )
-
-        assert response.status_code == 401
-
-    def test_logout_success(self, client, test_user, valid_jwt_token):
+    def test_logout_success(self, client, test_user, valid_auth_token):
         """Test logout with token revocation."""
         response = client.post(
             "/auth/logout",
-            headers={"Authorization": f"Bearer {valid_jwt_token}"},
+            headers={"Authorization": f"Bearer {valid_auth_token}"},
         )
 
         assert response.status_code == 200
@@ -140,11 +111,11 @@ class TestAuthenticationEndpoints:
 class TestSessionManagementEndpoints:
     """Test session management endpoints."""
 
-    def test_create_session_success(self, client, test_user, valid_jwt_token):
+    def test_create_session_success(self, client, test_user, valid_auth_token):
         """Test creating a session."""
         response = client.post(
             "/sessions",
-            headers={"Authorization": f"Bearer {valid_jwt_token}"},
+            headers={"Authorization": f"Bearer {valid_auth_token}"},
             json={
                 "title": "My New Session",
                 "metadata": {"model": "gemini"},
@@ -174,40 +145,40 @@ class TestSessionManagementEndpoints:
 
         assert response.status_code == 401
 
-    def test_get_sessions_list(self, client, test_user, valid_jwt_token, test_session_data):
+    def test_get_sessions_list(self, client, test_user, valid_auth_token, test_session_data):
         """Test getting sessions list."""
         response = client.get(
             "/sessions",
-            headers={"Authorization": f"Bearer {valid_jwt_token}"},
+            headers={"Authorization": f"Bearer {valid_auth_token}"},
         )
 
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
 
-    def test_get_sessions_filter_by_status(self, client, test_user, valid_jwt_token):
+    def test_get_sessions_filter_by_status(self, client, test_user, valid_auth_token):
         """Test filtering sessions by status."""
         response = client.get(
             "/sessions?status_filter=ACTIVE",
-            headers={"Authorization": f"Bearer {valid_jwt_token}"},
+            headers={"Authorization": f"Bearer {valid_auth_token}"},
         )
 
         assert response.status_code == 200
         data = response.json()
         assert all(s["status"] == "ACTIVE" for s in data)
 
-    def test_archive_session(self, client, test_user, valid_jwt_token, test_session_data):
+    def test_archive_session(self, client, test_user, valid_auth_token, test_session_data):
         """Test archiving a session."""
         response = client.post(
             f"/sessions/{test_session_data.id}/archive",
-            headers={"Authorization": f"Bearer {valid_jwt_token}"},
+            headers={"Authorization": f"Bearer {valid_auth_token}"},
         )
 
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "archived"
 
-    def test_restore_session(self, client, test_user, valid_jwt_token, test_session_data, db_session):
+    def test_restore_session(self, client, test_user, valid_auth_token, test_session_data, db_session):
         """Test restoring archived session."""
         # First archive it
         test_session_data.status = "ARCHIVED"
@@ -216,21 +187,21 @@ class TestSessionManagementEndpoints:
 
         response = client.post(
             f"/sessions/{test_session_data.id}/reactivate",
-            headers={"Authorization": f"Bearer {valid_jwt_token}"},
+            headers={"Authorization": f"Bearer {valid_auth_token}"},
         )
 
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "active"
 
-    def test_delete_session(self, client, test_user, valid_jwt_token, test_session_data):
+    def test_delete_session(self, client, test_user, valid_auth_token, test_session_data):
         """Test deleting a session."""
         # Mock VectorDBService inside delete logic if needed, but api.py passes class
         # We need to mock delete_session_collection on VectorDBService
         with patch("api.VectorDBService.delete_session_collection"):
             response = client.delete(
                 f"/sessions/{test_session_data.id}",
-                headers={"Authorization": f"Bearer {valid_jwt_token}"},
+                headers={"Authorization": f"Bearer {valid_auth_token}"},
             )
 
             assert response.status_code == 200
@@ -242,7 +213,7 @@ class TestChatEndpoints:
 
     @patch("api.create_session_chatbot")
     def test_send_message_success(
-        self, mock_chatbot, client, test_user, auth_service, test_session_data
+        self, mock_chatbot, client, test_user, auth_service, test_session_data, db_session
     ):
         """Test sending a message to chatbot."""
         mock_instance = MagicMock()
@@ -250,7 +221,7 @@ class TestChatEndpoints:
         mock_chatbot.return_value = mock_instance
 
         # Create token specifically for this session
-        token = auth_service.create_access_token(test_user["user"].id, test_session_data.id)
+        token = auth_service.create_session(db_session, test_user["user"].id, test_session_data.id)
 
         response = client.post(
             "/chat",
@@ -271,10 +242,10 @@ class TestChatEndpoints:
 
         assert response.status_code == 401
 
-    def test_send_message_empty(self, client, test_user, auth_service, test_session_data):
+    def test_send_message_empty(self, client, test_user, auth_service, test_session_data, db_session):
         """Test sending empty message."""
         # Create token for valid session
-        token = auth_service.create_access_token(test_user["user"].id, test_session_data.id)
+        token = auth_service.create_session(db_session, test_user["user"].id, test_session_data.id)
         
         response = client.post(
             "/chat",
@@ -289,13 +260,13 @@ class TestConversationHistoryEndpoints:
     """Test conversation history endpoints."""
 
     @patch("api.get_session_conversation")
-    def test_get_conversation_history(self, mock_get_hist, client, test_user, valid_jwt_token, test_session_data):
+    def test_get_conversation_history(self, mock_get_hist, client, test_user, valid_auth_token, test_session_data):
         """Test retrieving conversation history."""
         mock_get_hist.return_value = {"messages": [], "checkpoint_count": 0, "message_count": 0}
         
         response = client.get(
             f"/sessions/{test_session_data.id}/chat-history",
-            headers={"Authorization": f"Bearer {valid_jwt_token}"},
+            headers={"Authorization": f"Bearer {valid_auth_token}"},
         )
 
         assert response.status_code == 200
@@ -304,14 +275,14 @@ class TestConversationHistoryEndpoints:
 
     @patch("api.get_session_conversation")
     def test_get_conversation_history_paginated(
-        self, mock_get_hist, client, test_user, valid_jwt_token, test_session_data
+        self, mock_get_hist, client, test_user, valid_auth_token, test_session_data
     ):
         """Test retrieving paginated conversation history."""
         mock_get_hist.return_value = {"messages": [], "checkpoint_count": 0, "message_count": 0}
 
         response = client.get(
             f"/sessions/{test_session_data.id}/chat-history/paginated?page=0&page_size=10",
-            headers={"Authorization": f"Bearer {valid_jwt_token}"},
+            headers={"Authorization": f"Bearer {valid_auth_token}"},
         )
 
         assert response.status_code == 200
@@ -328,10 +299,10 @@ class TestConversationHistoryEndpoints:
         assert response.status_code == 401
 
     def test_get_conversation_history_nonexistent_session(
-        self, client, test_user, auth_service
+        self, client, test_user, auth_service, db_session
     ):
         """Test getting history for nonexistent session."""
-        token = auth_service.create_access_token(test_user["user"].id, "99999")
+        token = auth_service.create_session(db_session, test_user["user"].id, None)
         
         response = client.get(
             "/sessions/99999/chat-history",
@@ -344,7 +315,7 @@ class TestConversationHistoryEndpoints:
 class TestFileUploadEndpoints:
     """Test file upload endpoints."""
 
-    def test_upload_pdf_file(self, client, test_user, valid_jwt_token, test_session_data):
+    def test_upload_pdf_file(self, client, test_user, valid_auth_token, test_session_data):
         """Test uploading a PDF file."""
         # Mock VectorDBService.add_documents_to_session to return a dict
         with patch("api.VectorDBService.add_documents_to_session") as mock_add:
@@ -352,44 +323,44 @@ class TestFileUploadEndpoints:
             
             response = client.post(
                 f"/sessions/{test_session_data.id}/upload",
-                headers={"Authorization": f"Bearer {valid_jwt_token}"},
+                headers={"Authorization": f"Bearer {valid_auth_token}"},
                 files={"file": ("test.pdf", b"%PDF-1.4...", "application/pdf")},
             )
 
             assert response.status_code == 200 or response.status_code == 201
             assert response.json()["chunks"] == 5
 
-    def test_upload_docx_file(self, client, test_user, valid_jwt_token, test_session_data):
+    def test_upload_docx_file(self, client, test_user, valid_auth_token, test_session_data):
         """Test uploading a DOCX file."""
         with patch("api.VectorDBService.add_documents_to_session") as mock_add:
             mock_add.return_value = {"chunks_added": 5}
             
             response = client.post(
                 f"/sessions/{test_session_data.id}/upload",
-                headers={"Authorization": f"Bearer {valid_jwt_token}"},
+                headers={"Authorization": f"Bearer {valid_auth_token}"},
                 files={"file": ("test.docx", b"PK\x03\x04...", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
             )
 
             assert response.status_code == 200 or response.status_code == 201
 
-    def test_upload_txt_file(self, client, test_user, valid_jwt_token, test_session_data):
+    def test_upload_txt_file(self, client, test_user, valid_auth_token, test_session_data):
         """Test uploading a TXT file."""
         with patch("api.VectorDBService.add_documents_to_session") as mock_add:
             mock_add.return_value = {"chunks_added": 5}
             
             response = client.post(
                 f"/sessions/{test_session_data.id}/upload",
-                headers={"Authorization": f"Bearer {valid_jwt_token}"},
+                headers={"Authorization": f"Bearer {valid_auth_token}"},
                 files={"file": ("test.txt", b"This is test content", "text/plain")},
             )
 
             assert response.status_code == 200 or response.status_code == 201
 
-    def test_upload_unsupported_file(self, client, test_user, valid_jwt_token, test_session_data):
+    def test_upload_unsupported_file(self, client, test_user, valid_auth_token, test_session_data):
         """Test uploading unsupported file type."""
         response = client.post(
             f"/sessions/{test_session_data.id}/upload",
-            headers={"Authorization": f"Bearer {valid_jwt_token}"},
+            headers={"Authorization": f"Bearer {valid_auth_token}"},
             files={"file": ("test.exe", b"fake executable", "application/x-msdownload")},
         )
 
@@ -404,11 +375,11 @@ class TestFileUploadEndpoints:
 
         assert response.status_code == 401
 
-    def test_upload_to_nonexistent_session(self, client, test_user, valid_jwt_token):
+    def test_upload_to_nonexistent_session(self, client, test_user, valid_auth_token):
         """Test uploading to nonexistent session."""
         response = client.post(
             "/sessions/99999/upload",
-            headers={"Authorization": f"Bearer {valid_jwt_token}"},
+            headers={"Authorization": f"Bearer {valid_auth_token}"},
             files={"file": ("test.txt", b"content", "text/plain")},
         )
 
@@ -467,16 +438,16 @@ class TestErrorHandling:
 class TestEndpointSecurity:
     """Test security aspects of endpoints."""
 
-    def test_expired_token(self, client, expired_jwt_token):
+    def test_expired_token(self, client, expired_auth_token):
         """Test using expired token."""
         response = client.get(
             "/sessions",
-            headers={"Authorization": f"Bearer {expired_jwt_token}"},
+            headers={"Authorization": f"Bearer {expired_auth_token}"},
         )
 
         assert response.status_code == 401
 
-    def test_token_from_different_user(self, client, test_user, valid_jwt_token, db_session):
+    def test_token_from_different_user(self, client, test_user, valid_auth_token, db_session):
         """Test using token from different user."""
         from tests.fixtures.factories import SessionFactory, UserFactory
 
@@ -487,7 +458,7 @@ class TestEndpointSecurity:
         # This route /sessions/{id} does not exist, so let's try upload or archive which checks ownership
         response = client.post(
             f"/sessions/{another_session.id}/archive",
-            headers={"Authorization": f"Bearer {valid_jwt_token}"},
+            headers={"Authorization": f"Bearer {valid_auth_token}"},
         )
 
         assert response.status_code == 403 or response.status_code == 404

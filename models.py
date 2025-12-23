@@ -30,6 +30,7 @@ class User(Base):
 
     # Relationships
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
+    auth_sessions = relationship("AuthSession", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"
@@ -107,14 +108,14 @@ class Document(Base):
         return f"<Document(id={self.id}, file_name={self.file_name})>"
 
 
-class TokenBlacklist(Base):
+class AuthSession(Base):
 
-    __tablename__ = "token_blacklist"
-    __table_args__ = (Index("ix_token_blacklist_user", "user_id"),)
+    __tablename__ = "auth_sessions"
+    __table_args__ = (Index("ix_auth_sessions_user", "user_id"),)
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    jti = Column(String(255), unique=True, nullable=False, index=True)  # JWT ID
+    token = Column(String(255), primary_key=True, index=True)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    chat_session_id = Column(String(36), ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -122,5 +123,9 @@ class TokenBlacklist(Base):
     )
     expires_at = Column(DateTime(timezone=True), nullable=False)
 
+    # Relationships
+    user = relationship("User", back_populates="auth_sessions")
+    chat_session = relationship("Session")
+
     def __repr__(self):
-        return f"<TokenBlacklist(jti={self.jti}, user_id={self.user_id})>"
+        return f"<AuthSession(token={self.token}, user_id={self.user_id})>"

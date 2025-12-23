@@ -5,8 +5,8 @@ import pytest
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
-from models import User, Session as SessionModel, Document, TokenBlacklist, SessionStatus
-from tests.fixtures.factories import UserFactory, SessionFactory, DocumentFactory, TokenBlacklistFactory
+from models import User, Session as SessionModel, Document, AuthSession, SessionStatus
+from tests.fixtures.factories import UserFactory, SessionFactory, DocumentFactory, AuthSessionFactory
 
 
 class TestUserModel:
@@ -223,14 +223,14 @@ class TestDocumentModel:
         assert any(d.file_type == "txt" for d in session.documents)
 
 
-class TestTokenBlacklistModel:
-    """Test TokenBlacklist model."""
+class TestAuthSessionModel:
+    """Test AuthSession model."""
 
-    def test_create_token_blacklist(self, db_session):
-        """Test creating a token blacklist entry."""
+    def test_create_auth_session(self, db_session):
+        """Test creating an auth session."""
         user, _ = UserFactory.create(db_session)
-        token = TokenBlacklist(
-            jti="jti-123",
+        token = AuthSession(
+            token="token-123",
             user_id=user.id,
             created_at=datetime.now(timezone.utc),
             expires_at=datetime.now(timezone.utc),
@@ -239,53 +239,28 @@ class TestTokenBlacklistModel:
         db_session.commit()
         db_session.refresh(token)
 
-        assert token.id is not None
-        assert token.jti == "jti-123"
+        assert token.token == "token-123"
         assert token.user_id == user.id
 
-    def test_token_blacklist_foreign_key(self, db_session):
-        """Test token blacklist foreign key to user."""
+    def test_auth_session_foreign_key(self, db_session):
+        """Test auth session foreign key to user."""
         user, _ = UserFactory.create(db_session)
-        token = TokenBlacklistFactory.create(db_session, user_id=user.id)
+        token = AuthSessionFactory.create(db_session, user_id=user.id)
 
-        retrieved_token = db_session.query(TokenBlacklist).filter(TokenBlacklist.id == token.id).first()
+        retrieved_token = db_session.query(AuthSession).filter(AuthSession.token == token.token).first()
         assert retrieved_token.user_id == user.id
 
-    def test_token_blacklist_cascade_delete(self, db_session):
+    def test_auth_session_cascade_delete(self, db_session):
         """Test cascade delete when user is deleted."""
         user, _ = UserFactory.create(db_session)
-        token = TokenBlacklistFactory.create(db_session, user_id=user.id)
-        token_id = token.id
+        token = AuthSessionFactory.create(db_session, user_id=user.id)
+        token_str = token.token
 
         db_session.delete(user)
         db_session.commit()
 
-        deleted_token = db_session.query(TokenBlacklist).filter(TokenBlacklist.id == token_id).first()
+        deleted_token = db_session.query(AuthSession).filter(AuthSession.token == token_str).first()
         assert deleted_token is None
-
-    def test_token_blacklist_jti_unique(self, db_session):
-        """Test that JTI should be unique."""
-        user, _ = UserFactory.create(db_session)
-        jti = "unique-jti-456"
-        token1 = TokenBlacklist(
-            jti=jti,
-            user_id=user.id,
-            created_at=datetime.now(timezone.utc),
-            expires_at=datetime.now(timezone.utc),
-        )
-        token2 = TokenBlacklist(
-            jti=jti,
-            user_id=user.id,
-            created_at=datetime.now(timezone.utc),
-            expires_at=datetime.now(timezone.utc),
-        )
-
-        db_session.add(token1)
-        db_session.commit()
-
-        db_session.add(token2)
-        with pytest.raises(Exception):  # IntegrityError
-            db_session.commit()
 
 
 class TestDatabaseRelationships:
@@ -294,7 +269,7 @@ class TestDatabaseRelationships:
     def test_user_has_multiple_sessions(self, db_session):
         """Test user can have multiple sessions."""
         user, _ = UserFactory.create(db_session)
-        sessions = SessionFactory.create_batch(db_session, user_id=user.id, count=5)
+        sessions = [SessionFactory.create(db_session, user_id=user.id) for _ in range(5)]
 
         db_session.refresh(user)
         assert len(user.sessions) == 5
@@ -302,7 +277,7 @@ class TestDatabaseRelationships:
     def test_session_has_multiple_documents(self, db_session):
         """Test session can have multiple documents."""
         session = SessionFactory.create(db_session)
-        documents = DocumentFactory.create_batch(db_session, session_id=session.id, count=3)
+        documents = [DocumentFactory.create(db_session, session_id=session.id) for _ in range(3)]
 
         db_session.refresh(session)
         assert len(session.documents) == 3
@@ -324,7 +299,7 @@ class TestDatabaseRelationships:
     def test_query_documents_by_session(self, db_session):
         """Test querying documents by session."""
         session = SessionFactory.create(db_session)
-        documents = DocumentFactory.create_batch(db_session, session_id=session.id, count=2)
+        documents = [DocumentFactory.create(db_session, session_id=session.id) for _ in range(2)]
 
         queried_docs = db_session.query(Document).filter(Document.session_id == session.id).all()
         assert len(queried_docs) == 2
