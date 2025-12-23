@@ -44,20 +44,29 @@ def get_session_conversation(session_id: str, checkpointer: Any = None, limit: O
         seen_message_ids = set()
 
         for checkpoint_tuple in reversed(all_checkpoints):
-            checkpoint = checkpoint_tuple[0]
-            checkpoint_id = checkpoint_tuple[1]
+            checkpoint = checkpoint_tuple.checkpoint
+            # metadata = checkpoint_tuple.metadata (if needed)
+            
+            # checkpoint['id'] might be available directly in the dict
+            checkpoint_id = checkpoint['id'] 
             state = checkpoint.get("channel_values", {})
             messages = state.get("messages", [])
 
             for msg_idx, msg in enumerate(messages):
-                msg_id = f"{checkpoint_id}_{msg_idx}"
-                if msg_id not in seen_message_ids:
+                # Use message ID if available, otherwise fallback to content hash or checkpoint index
+                if hasattr(msg, "id") and msg.id:
+                    msg_unique_id = msg.id
+                else:
+                    # Fallback for messages without ID (less reliable but better than nothing)
+                    msg_unique_id = f"{checkpoint_id}_{msg_idx}"
+                
+                if msg_unique_id not in seen_message_ids:
                     msg_data = extract_message_content(msg)
-                    msg_data["id"] = msg_id
+                    msg_data["id"] = msg_unique_id
                     msg_data["checkpoint_id"] = checkpoint_id
                     msg_data["timestamp"] = checkpoint.get("ts")
                     all_messages.append(msg_data)
-                    seen_message_ids.add(msg_id)
+                    seen_message_ids.add(msg_unique_id)
 
         if limit:
             all_messages = all_messages[-limit:]
