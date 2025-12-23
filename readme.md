@@ -115,7 +115,7 @@ You can interact with the API using tools like curl, Postman, or from your front
    curl -X POST "http://127.0.0.1:8000/auth/login" \
      -H "Content-Type: application/json" \
      -d '{"email": "user@example.com", "password": "password123"}'
-   # Response: {"access_token": "...", "token_type": "bearer"}
+   # Response: {"access_token": "...", "token_type": "bearer", "session_id": "..."}
    ```
 
 3. **Create a session**

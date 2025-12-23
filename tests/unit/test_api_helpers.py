@@ -68,35 +68,37 @@ class TestApiHelpers:
 
     def test_get_session_conversation_checkpoints(self):
         """Test retrieving history from checkpoints."""
-        # Mock checkpoints: list of tuples (checkpoint, checkpoint_id)
-        # Checkpoint structure: {'channel_values': {'messages': [...]}, 'ts': timestamp}
         
         msg1 = MagicMock(content="Hello")
         msg1.__class__.__name__ = "HumanMessage"
+        msg1.id = "msg1"
         
         msg2 = MagicMock(content="Hi there")
         msg2.__class__.__name__ = "AIMessage"
+        msg2.id = "msg2"
         
-        cp1 = (
-            {"channel_values": {"messages": [msg1]}, "ts": "2023-01-01T10:00:00"},
-            "cp_id_1"
-        )
-        cp2 = (
-            {"channel_values": {"messages": [msg1, msg2]}, "ts": "2023-01-01T10:01:00"},
-            "cp_id_2"
-        )
+        cp1_data = {"channel_values": {"messages": [msg1]}, "ts": "2023-01-01T10:00:00", "id": "cp_id_1"}
+        cp2_data = {"channel_values": {"messages": [msg1, msg2]}, "ts": "2023-01-01T10:01:00", "id": "cp_id_2"}
+
+        # Mock CheckpointTuple objects
+        cp_tuple1 = MagicMock()
+        cp_tuple1.checkpoint = cp1_data
+        
+        cp_tuple2 = MagicMock()
+        cp_tuple2.checkpoint = cp2_data
         
         # API iterates reversed(list(checkpointer.list(...)))
         mock_cp = MagicMock()
-        mock_cp.list.return_value = [cp2, cp1]
+        mock_cp.list.return_value = [cp_tuple2, cp_tuple1]
         
         result = get_session_conversation("session1", checkpointer=mock_cp)
         
         messages = result["messages"]
-        # Note: Keeps the original logic (duplication behavior) to ensure refactoring doesn't change logic.
-        assert len(messages) == 3 
+        
+        # With deduplication fix, we should see only 2 unique messages
+        assert len(messages) == 2
         assert messages[0]["content"] == "Hello"
-        assert messages[2]["content"] == "Hi there"
+        assert messages[1]["content"] == "Hi there"
 
     def test_get_session_conversation_error(self):
         """Test error handling in history retrieval."""

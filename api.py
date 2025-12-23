@@ -128,8 +128,15 @@ def login(req: UserLoginDTO, db: SQLSession = Depends(get_db)):
             detail="Invalid email or password",
         )
 
-    sessions = SessionManager.list_user_sessions(user.id, db, SessionState.ACTIVE, limit=1)
-    session_id = sessions[0].id if sessions else SessionManager.create_session(user.id, db).id
+    global checkpointer
+    if not checkpointer:
+         memory_db = os.getenv("AGENT_MEMORY_DB", "agent_memory.db")
+         checkpointer = SqliteSaver.from_conn_string(memory_db).__enter__()
+
+    session = SessionManager.get_or_create_empty_session(
+        user.id, db, checkpointer, VectorDBService
+    )
+    session_id = session.id
 
     access_token = AuthService.create_session(db, user.id, session_id)
 
@@ -137,6 +144,7 @@ def login(req: UserLoginDTO, db: SQLSession = Depends(get_db)):
 
     return TokenResponseDTO(
         access_token=access_token,
+        session_id=session_id
     )
 
 
