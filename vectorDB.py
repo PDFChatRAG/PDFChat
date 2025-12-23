@@ -14,16 +14,10 @@ CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_db")
 
 
 class VectorDBService:
-    """Service for managing isolated vector stores per session."""
 
     @staticmethod
     def get_collection_name(session_id: str, user_id: str) -> str:
-        """
-        Generate collection name for user session.
 
-        Naming convention: user_<user_id>_session_<session_id>
-        Enables rapid isolation and multi-tenancy
-        """
         sanitized_user = user_id.lower().replace("-", "_")
         sanitized_session = session_id.lower().replace("-", "_")
         return f"user_{sanitized_user}_session_{sanitized_session}"
@@ -32,17 +26,7 @@ class VectorDBService:
     def create_session_collection(
         user_id: str, session_id: str, embedding_function
     ) -> Chroma:
-        """
-        Create isolated collection for user session.
 
-        Args:
-            user_id: User identifier
-            session_id: Session identifier
-            embedding_function: LangChain embedding function
-
-        Returns:
-            Chroma vector store instance
-        """
         collection_name = VectorDBService.get_collection_name(session_id, user_id)
 
         vectordb = Chroma(
@@ -55,13 +39,7 @@ class VectorDBService:
 
     @staticmethod
     def delete_session_collection(session_id: str, user_id: str):
-        """
-        Delete collection when session is archived/deleted.
 
-        Args:
-            session_id: Session identifier
-            user_id: User identifier
-        """
         collection_name = VectorDBService.get_collection_name(session_id, user_id)
 
         try:
@@ -80,19 +58,7 @@ class VectorDBService:
         file_name: str,
         embedding_function,
     ) -> dict:
-        """
-        Add document to session-specific collection.
 
-        Args:
-            session_id: Session identifier
-            user_id: User identifier
-            file_path: Path to file to process
-            file_name: Original file name
-            embedding_function: LangChain embedding function
-
-        Returns:
-            Dict with document metadata (chunks added, document id)
-        """
         vectordb = VectorDBService.create_session_collection(
             user_id, session_id, embedding_function
         )
@@ -132,17 +98,6 @@ class VectorDBService:
     def get_session_retriever(
         session_id: str, user_id: str, embedding_function
     ):
-        """
-        Get retriever for session-specific vector store.
-
-        Args:
-            session_id: Session identifier
-            user_id: User identifier
-            embedding_function: LangChain embedding function
-
-        Returns:
-            LangChain retriever for the session's collection
-        """
         vectordb = VectorDBService.create_session_collection(
             user_id, session_id, embedding_function
         )

@@ -1,12 +1,3 @@
-"""
-ChatBot factory for creating session-specific chat instances.
-
-Each session gets its own isolated ChatBot instance with:
-- Session-specific vector database collection
-- Independent chat memory (thread ID)
-- Isolated conversation context
-"""
-
 import os
 import logging
 from typing import Tuple, Any
@@ -23,16 +14,9 @@ load_dotenv()
 
 
 class ChatBot:
-    """Session-specific ChatBot instance with isolated memory and vector store."""
 
     def __init__(self, user_id: str, session_id: str):
-        """
-        Initialize session-specific ChatBot.
 
-        Args:
-            user_id: User identifier
-            session_id: Session identifier
-        """
         self.user_id = user_id
         self.session_id = session_id
         self.model = None
@@ -43,18 +27,7 @@ class ChatBot:
         logger.info(f"Initialized ChatBot for user {user_id}, session {session_id}")
 
     def initialize(self, checkpointer: Any) -> "ChatBot":
-        """
-        Initialize the agent with session-specific settings.
-
-        Args:
-            checkpointer: LangGraph checkpointer instance for memory
-
-        Returns:
-            Self for method chaining
-
-        Raises:
-            ValueError: If GOOGLE_API_KEY is not set
-        """
+  
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ValueError(
@@ -98,18 +71,7 @@ class ChatBot:
         return self
 
     def chat(self, human_message: str) -> str:
-        """
-        Process user message and return AI response.
 
-        Args:
-            human_message: User's message
-
-        Returns:
-            AI response text
-
-        Raises:
-            RuntimeError: If agent not initialized
-        """
         if not self.agent:
             raise RuntimeError("ChatBot not initialized. Call initialize() first.")
 
@@ -145,27 +107,9 @@ class ChatBot:
             logger.error(f"Error in chat for session {self.session_id}: {e}")
             raise
 
-    def cleanup(self):
-        """Clean up resources."""
-        # No specific cleanup needed for shared checkpointer
-        pass
-
 
 def create_session_chatbot(user_id: str, session_id: str, checkpointer: Any) -> ChatBot:
-    """
-    Factory function to create a session-specific ChatBot instance.
 
-    Args:
-        user_id: User identifier
-        session_id: Session identifier
-        checkpointer: LangGraph checkpointer
-
-    Returns:
-        Initialized ChatBot instance
-
-    Raises:
-        ValueError: If GOOGLE_API_KEY is not set
-    """
     chatbot = ChatBot(user_id, session_id)
     chatbot.initialize(checkpointer)
     return chatbot

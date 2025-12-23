@@ -5,12 +5,12 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from sqlalchemy.orm import Session as SQLSession
 import logging
+from models import Session
 
 logger = logging.getLogger(__name__)
 
 
 class SessionState(str, Enum):
-    """Session lifecycle states."""
 
     ACTIVE = "ACTIVE"
     ARCHIVED = "ARCHIVED"
@@ -18,7 +18,6 @@ class SessionState(str, Enum):
 
 
 class SessionLifecycle:
-    """Manages session state transitions and lifecycle operations."""
 
     # Define valid state transitions
     VALID_TRANSITIONS = {
@@ -43,21 +42,7 @@ class SessionLifecycle:
         db: SQLSession,
         vectordb_service,
     ) -> bool:
-        """
-        Execute state transition with side effects.
 
-        Args:
-            session: Session model instance
-            target_state: Target SessionState
-            db: SQLAlchemy database session
-            vectordb_service: VectorDB service for collection cleanup
-
-        Returns:
-            True if transition successful
-
-        Raises:
-            ValueError: If transition is invalid
-        """
         if not SessionLifecycle.can_transition(session.status, target_state):
             raise ValueError(
                 f"Cannot transition from {session.status} to {target_state}"
@@ -76,7 +61,6 @@ class SessionLifecycle:
 
     @staticmethod
     def _archive(session, db: SQLSession) -> bool:
-        """Archive session (soft delete)."""
         session.status = SessionState.ARCHIVED
         session.archived_at = datetime.now(timezone.utc)
         db.commit()
@@ -85,7 +69,6 @@ class SessionLifecycle:
 
     @staticmethod
     def _reactivate(session, db: SQLSession) -> bool:
-        """Reactivate archived session."""
         session.status = SessionState.ACTIVE
         session.archived_at = None
         db.commit()
@@ -94,7 +77,6 @@ class SessionLifecycle:
 
     @staticmethod
     def _hard_delete(session, db: SQLSession, vectordb_service) -> bool:
-        """Hard delete session and associated data."""
         # Delete Chroma collection
         try:
             vectordb_service.delete_session_collection(session.id, session.user_id)
@@ -110,7 +92,6 @@ class SessionLifecycle:
 
 
 class ArchivalPolicy:
-    """Auto-archival rules for inactive sessions."""
 
     # Configuration (can be overridden via environment variables)
     INACTIVITY_DAYS = int(__import__("os").getenv("SESSION_INACTIVITY_DAYS", 30))
@@ -118,7 +99,6 @@ class ArchivalPolicy:
 
     @staticmethod
     def should_auto_archive(session) -> bool:
-        """Check if session should be auto-archived due to inactivity."""
         if session.status != SessionState.ACTIVE:
             return False
 
@@ -134,7 +114,6 @@ class ArchivalPolicy:
 
     @staticmethod
     def should_hard_delete(session) -> bool:
-        """Check if archived session should be hard deleted based on retention."""
         if session.status != SessionState.ARCHIVED or not session.archived_at:
             return False
 
@@ -150,12 +129,7 @@ class ArchivalPolicy:
 
     @staticmethod
     def cleanup_job(db: SQLSession, vectordb_service):
-        """
-        Run periodically to auto-archive inactive sessions and hard-delete old archived ones.
 
-        Should be called by scheduled job (e.g., APScheduler daily).
-        """
-        from models import Session
 
         logger.info("Running session archival cleanup job")
 

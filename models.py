@@ -10,7 +10,6 @@ Base = declarative_base()
 
 
 class User(Base):
-    """User account model."""
 
     __tablename__ = "users"
 
@@ -37,7 +36,6 @@ class User(Base):
 
 
 class SessionStatus(str, enum.Enum):
-    """Session lifecycle states."""
 
     ACTIVE = "ACTIVE"
     ARCHIVED = "ARCHIVED"
@@ -45,7 +43,6 @@ class SessionStatus(str, enum.Enum):
 
 
 class Session(Base):
-    """Chat session model - each user can have multiple sessions."""
 
     __tablename__ = "sessions"
     __table_args__ = (Index("ix_sessions_user_status", "user_id", "status"),)
@@ -86,7 +83,6 @@ class Session(Base):
 
 
 class Document(Base):
-    """Document metadata - tracks files uploaded to sessions."""
 
     __tablename__ = "documents"
     __table_args__ = (Index("ix_documents_session", "session_id"),)
@@ -112,7 +108,6 @@ class Document(Base):
 
 
 class TokenBlacklist(Base):
-    """Token revocation list for logout functionality."""
 
     __tablename__ = "token_blacklist"
     __table_args__ = (Index("ix_token_blacklist_user", "user_id"),)

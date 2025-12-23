@@ -1,40 +1,30 @@
-"""
-FastAPI application with multi-user, multi-session support and JWT authentication.
-
-Features:
-- User registration and login with JWT tokens
-- Multi-session management per user
-- Session-isolated chat and document uploads
-- Auto-archival of inactive sessions
-- Token revocation on logout
-"""
-
 import os
 import tempfile
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Optional, Annotated
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, status, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session as SQLSession
-from pydantic import BaseModel, EmailStr
-from typing import Annotated
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from database import init_db, get_db, engine
-from models import Base, User, TokenBlacklist, SessionStatus
+from database import init_db, get_db
+from models import User, TokenBlacklist, SessionStatus
 from auth_service import AuthService
 from chatBot import create_session_chatbot
 from sessionManager import SessionManager
-from session_lifecycle import SessionLifecycle, SessionState, ArchivalPolicy
+from session_lifecycle import SessionState
 from vectorDB import VectorDBService
 from dto.session_dto import SessionResponseDTO
 from dto.chat_dto import ChatRequestDTO, ChatResponseDTO
-from dto.conversation_dto import MessageDTO, ConversationHistoryDTO, PaginatedConversationDTO
+from dto.conversation_dto import ConversationHistoryDTO, PaginatedConversationDTO
+from dto.auth_dto import UserRegisterDTO, UserLoginDTO, TokenResponseDTO, UserResponseDTO
+from dependencies import get_current_user
+from utils.conversation_helper import get_session_conversation
 
 logger = logging.getLogger(__name__)
 
@@ -47,105 +37,9 @@ CLEANUP_JOB_INTERVAL_HOURS = 24  # Run cleanup daily
 checkpointer = None
 
 
-# DTOs for authentication
-class UserRegisterDTO(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class UserLoginDTO(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class TokenResponseDTO(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-
-
-class UserResponseDTO(BaseModel):
-    id: str
-    email: str
-    created_at: datetime
-
-
-# ============================================================================
-# HELPER FUNCTIONS: Conversation History
-# ============================================================================
-
-
-def extract_message_content(msg) -> dict:
-    """Extract content from a LangChain message object."""
-    if hasattr(msg, "content"):
-        content = msg.content
-    else:
-        content = str(msg)
-
-    msg_type = msg.__class__.__name__
-    role = "assistant"
-    if "Human" in msg_type or "User" in msg_type:
-        role = "user"
-    elif "AI" in msg_type or "Assistant" in msg_type:
-        role = "assistant"
-    elif "System" in msg_type:
-        role = "system"
-    elif "Tool" in msg_type:
-        role = "tool"
-
-    return {"role": role, "content": content, "type": msg_type}
-
-
-def get_session_conversation(session_id: str, limit: Optional[int] = None) -> dict:
-    """Retrieve all messages in a session's conversation from LangGraph checkpoints."""
-    try:
-        global checkpointer
-        if not checkpointer:
-            # Fallback if checkpointer not initialized (e.g. tests without lifespan)
-            memory_db = os.getenv("AGENT_MEMORY_DB", "agent_memory.db")
-            checkpointer = SqliteSaver.from_conn_string(memory_db)
-            checkpointer.__enter__()
-
-        config = {"configurable": {"thread_id": session_id}}
-        all_checkpoints = list(checkpointer.list(config, limit=None))
-
-        if not all_checkpoints:
-            return {"session_id": session_id, "messages": [], "checkpoint_count": 0, "message_count": 0}
-
-        all_messages = []
-        seen_message_ids = set()
-
-        for checkpoint_tuple in reversed(all_checkpoints):
-            checkpoint = checkpoint_tuple[0]
-            checkpoint_id = checkpoint_tuple[1]
-            state = checkpoint.get("channel_values", {})
-            messages = state.get("messages", [])
-
-            for msg_idx, msg in enumerate(messages):
-                msg_id = f"{checkpoint_id}_{msg_idx}"
-                if msg_id not in seen_message_ids:
-                    msg_data = extract_message_content(msg)
-                    msg_data["id"] = msg_id
-                    msg_data["checkpoint_id"] = checkpoint_id
-                    msg_data["timestamp"] = checkpoint.get("ts")
-                    all_messages.append(msg_data)
-                    seen_message_ids.add(msg_id)
-
-        if limit:
-            all_messages = all_messages[-limit:]
-
-        logger.info(f"Retrieved {len(all_messages)} messages from session {session_id}")
-        return {"session_id": session_id, "messages": all_messages, "checkpoint_count": len(all_checkpoints), "message_count": len(all_messages)}
-
-    except Exception as e:
-        logger.error(f"Error retrieving conversation history: {e}")
-        return {"session_id": session_id, "messages": [], "checkpoint_count": 0, "message_count": 0, "error": str(e)}
-
-
 # Startup and shutdown events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan events."""
     # Startup
     logger.info("Initializing PDFChat application...")
     init_db()
@@ -158,33 +52,18 @@ async def lifespan(app: FastAPI):
     checkpointer = checkpointer_manager.__enter__()
     logger.info("Memory checkpointer initialized")
 
-    # TODO: Initialize APScheduler for cleanup job
-    # scheduler = BackgroundScheduler()
-    # scheduler.add_job(
-    #     ArchivalPolicy.cleanup_job,
-    #     "interval",
-    #     hours=CLEANUP_JOB_INTERVAL_HOURS,
-    #     args=[db, VectorDBService]
-    # )
-    # scheduler.start()
-
     yield
 
     # Shutdown
     logger.info("Shutting down PDFChat application...")
     if checkpointer:
         try:
-            # We need the manager to exit, but we only have the entered object.
-            # SqliteSaver context manager returns self.
-            # So checkpointer is the manager instance.
             checkpointer.__exit__(None, None, None)
             logger.info("Memory checkpointer closed")
         except Exception as e:
             logger.warning(f"Error closing checkpointer: {e}")
-    # TODO: scheduler.shutdown()
 
 
-# FastAPI App
 app = FastAPI(
     title="PDFChat",
     description="Multi-user, multi-session PDF chat application",
@@ -192,25 +71,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS Middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-# FastAPI App
-app = FastAPI(
-    title="PDFChat",
-    description="Multi-user, multi-session PDF chat application",
-    version="2.0.0",
-    lifespan=lifespan,
-)
-
-# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -227,8 +87,6 @@ app.add_middleware(
 
 @app.post("/auth/register", response_model=UserResponseDTO)
 def register(req: UserRegisterDTO, db: SQLSession = Depends(get_db)):
-    """Register a new user."""
-    # Check if user exists
     existing_user = db.query(User).filter(User.email == req.email).first()
     if existing_user:
         raise HTTPException(
@@ -244,7 +102,6 @@ def register(req: UserRegisterDTO, db: SQLSession = Depends(get_db)):
             detail="Password is too long",
         )
 
-    # Create user
     user = User(
         email=req.email,
         hashed_password=hashed_pw,
@@ -264,7 +121,6 @@ def register(req: UserRegisterDTO, db: SQLSession = Depends(get_db)):
 
 @app.post("/auth/login", response_model=TokenResponseDTO)
 def login(req: UserLoginDTO, db: SQLSession = Depends(get_db)):
-    """Login user and get JWT tokens."""
     user = db.query(User).filter(User.email == req.email).first()
     if not user or not AuthService.verify_password(req.password, user.hashed_password):
         raise HTTPException(
@@ -272,8 +128,6 @@ def login(req: UserLoginDTO, db: SQLSession = Depends(get_db)):
             detail="Invalid email or password",
         )
 
-    # Create tokens
-    # First, create a default session or use existing active session
     sessions = SessionManager.list_user_sessions(user.id, db, SessionState.ACTIVE, limit=1)
     session_id = sessions[0].id if sessions else SessionManager.create_session(user.id, db).id
 
@@ -293,7 +147,6 @@ def refresh_token(
     authorization: Annotated[str, Header()] = None,
     db: SQLSession = Depends(get_db)
 ):
-    """Refresh access token using refresh token."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -316,7 +169,6 @@ def refresh_token(
             detail="Invalid token claims",
         )
 
-    # Get user's active session
     sessions = SessionManager.list_user_sessions(user_id, db, SessionState.ACTIVE, limit=1)
     session_id = sessions[0].id if sessions else SessionManager.create_session(user_id, db).id
 
@@ -324,7 +176,7 @@ def refresh_token(
 
     return TokenResponseDTO(
         access_token=new_access_token,
-        refresh_token=token,  # Return same refresh token
+        refresh_token=token
     )
 
 
@@ -333,7 +185,6 @@ def logout(
     authorization: Annotated[str, Header()] = None,
     db: SQLSession = Depends(get_db)
 ):
-    """Logout user by blacklisting token."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -368,44 +219,6 @@ def logout(
 
 
 # ============================================================================
-# DEPENDENCY: Get current user from JWT token
-# ============================================================================
-
-
-def get_current_user(
-    authorization: Annotated[str, Header()] = None,
-    db: SQLSession = Depends(get_db),
-) -> tuple:
-    """Extract and validate user from JWT token."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header",
-        )
-    
-    token = authorization[7:]  # Remove "Bearer " prefix
-    user_id, session_id, token_type = AuthService.get_token_claims(token)
-
-    if user_id is None or session_id is None or token_type != "access":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-        )
-
-    # Check if token is blacklisted
-    jti = AuthService.get_jti_from_token(token)
-    if jti:
-        blacklisted = db.query(TokenBlacklist).filter(TokenBlacklist.jti == jti).first()
-        if blacklisted:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token has been revoked",
-            )
-
-    return user_id, session_id
-
-
-# ============================================================================
 # SESSION ENDPOINTS
 # ============================================================================
 
@@ -415,7 +228,6 @@ def create_session(
     current_user: tuple = Depends(get_current_user),
     db: SQLSession = Depends(get_db),
 ):
-    """Create a new session for the current user."""
     user_id, _ = current_user
 
     session = SessionManager.create_session(user_id, db)
@@ -429,7 +241,6 @@ def list_sessions(
     db: SQLSession = Depends(get_db),
     status_filter: Optional[str] = None,
 ):
-    """List all sessions for current user."""
     user_id, _ = current_user
 
     status_enum = None
@@ -463,7 +274,6 @@ def archive_session(
     current_user: tuple = Depends(get_current_user),
     db: SQLSession = Depends(get_db),
 ):
-    """Archive a session."""
     user_id, _ = current_user
 
     session = SessionManager.archive_session(session_id, user_id, db)
@@ -479,7 +289,6 @@ def reactivate_session(
     current_user: tuple = Depends(get_current_user),
     db: SQLSession = Depends(get_db),
 ):
-    """Reactivate an archived session."""
     user_id, _ = current_user
 
     session = SessionManager.reactivate_session(session_id, user_id, db)
@@ -495,7 +304,6 @@ def delete_session(
     current_user: tuple = Depends(get_current_user),
     db: SQLSession = Depends(get_db),
 ):
-    """Hard delete a session (permanent)."""
     user_id, _ = current_user
 
     success = SessionManager.delete_session(
@@ -518,7 +326,6 @@ def chat(
     current_user: tuple = Depends(get_current_user),
     db: SQLSession = Depends(get_db),
 ):
-    """Send message to chatbot in a session."""
     user_id, session_id = current_user
 
     # Verify session ownership
@@ -532,20 +339,16 @@ def chat(
             detail=f"Session is {session.status}, not active",
         )
 
-    # Update session activity timestamp
     SessionManager.update_session_timestamp(session_id, user_id, db)
 
-    # Create session-specific chatbot
     try:
         global checkpointer
         if not checkpointer:
-             # Just in case lifespan didn't run (e.g. tests)
              memory_db = os.getenv("AGENT_MEMORY_DB", "agent_memory.db")
              checkpointer = SqliteSaver.from_conn_string(memory_db).__enter__()
 
         chatbot = create_session_chatbot(user_id, session_id, checkpointer)
         response = chatbot.chat(req.message)
-        chatbot.cleanup()
     except Exception as e:
         logger.error(f"Error in chat: {e}")
         raise HTTPException(
@@ -567,7 +370,6 @@ def get_chat_history(
     current_user: tuple = Depends(get_current_user),
     db: SQLSession = Depends(get_db),
 ):
-    """Retrieve full conversation history for a session."""
     user_id, _ = current_user
 
     # Verify session ownership
@@ -576,7 +378,7 @@ def get_chat_history(
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Get conversation from checkpoints
-    conv_data = get_session_conversation(session_id)
+    conv_data = get_session_conversation(session_id, checkpointer)
     
     return ConversationHistoryDTO(
         session_id=session_id,
@@ -603,7 +405,7 @@ def get_chat_history_paginated(
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Get conversation from checkpoints
-    conv_data = get_session_conversation(session_id)
+    conv_data = get_session_conversation(session_id, checkpointer)
     all_messages = conv_data.get("messages", [])
     total_count = len(all_messages)
 

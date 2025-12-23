@@ -1,5 +1,3 @@
-"""Database connection and session management."""
-
 import os
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
@@ -28,7 +26,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def get_db():
-    """Dependency injection for database sessions in FastAPI."""
     db = SessionLocal()
     try:
         yield db
@@ -37,7 +34,6 @@ def get_db():
 
 
 def init_db():
-    """Initialize database tables."""
     Base.metadata.create_all(bind=engine)
     print("Database tables initialized successfully!")
 
