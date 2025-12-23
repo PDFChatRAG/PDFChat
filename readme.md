@@ -150,7 +150,7 @@ You can interact with the API using tools like curl, Postman, or from your front
 
 ### Multi-User, Multi-Session Design
 
-PDFChat now supports a sophisticated session management system similar to ChatGPT and Gemini:
+PDFChat now supports a sophisticated session management system:
 
 #### Key Features:
 - **User Authentication**: Secure stateful session management
@@ -178,7 +178,7 @@ PDFChat now supports a sophisticated session management system similar to ChatGP
 
 | Module | Purpose |
 |--------|---------|
-| `models.py` | SQLAlchemy ORM models (User, Session, Document, TokenBlacklist) |
+| `models.py` | SQLAlchemy ORM models (User, Session, Document) |
 | `database.py` | Database connection and session management |
 | `auth_service.py` | Session token generation, password hashing, validation |
 | `session_lifecycle.py` | Session state machine and auto-archival policies |
