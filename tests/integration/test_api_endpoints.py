@@ -63,7 +63,6 @@ class TestAuthenticationEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
-        assert data.get("refresh_token") is None
         assert data["token_type"] == "bearer"
 
     def test_login_invalid_password(self, client, test_user):

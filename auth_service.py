@@ -36,7 +36,15 @@ class AuthService:
     def create_session(
         db: SQLSession, user_id: str, chat_session_id: Optional[str] = None
     ) -> str:
-        """Creates a new session token and stores it in the database."""
+        """Creates a new session token and stores it in the database.
+        Also cleans up any expired sessions for this user.
+        """
+        # Cleanup expired sessions for this user
+        db.query(AuthSession).filter(
+            AuthSession.user_id == user_id,
+            AuthSession.expires_at < datetime.now(timezone.utc)
+        ).delete()
+
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=SESSION_EXPIRE_MINUTES)
         

@@ -137,7 +137,6 @@ def login(req: UserLoginDTO, db: SQLSession = Depends(get_db)):
 
     return TokenResponseDTO(
         access_token=access_token,
-        refresh_token=None,
     )
 
 

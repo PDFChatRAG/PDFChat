@@ -110,12 +110,12 @@ You can interact with the API using tools like curl, Postman, or from your front
      -d '{"email": "user@example.com", "password": "password123"}'
    ```
 
-2. **Login to get JWT tokens**
+2. **Login to get session token**
    ```bash
    curl -X POST "http://127.0.0.1:8000/auth/login" \
      -H "Content-Type: application/json" \
      -d '{"email": "user@example.com", "password": "password123"}'
-   # Response: {"access_token": "...", "refresh_token": "...", "token_type": "bearer"}
+   # Response: {"access_token": "...", "token_type": "bearer"}
    ```
 
 3. **Create a session**
@@ -153,7 +153,7 @@ You can interact with the API using tools like curl, Postman, or from your front
 PDFChat now supports a sophisticated session management system similar to ChatGPT and Gemini:
 
 #### Key Features:
-- **User Authentication**: JWT-based authentication with access and refresh tokens
+- **User Authentication**: Secure stateful session management
 - **Multiple Sessions Per User**: Each user can create unlimited sessions
 - **Session Isolation**: Each session has:
   - Isolated chat memory (conversation history)
@@ -167,7 +167,7 @@ PDFChat now supports a sophisticated session management system similar to ChatGP
 - **Users**: User accounts with email and hashed passwords
 - **Sessions**: User sessions with status (active/archived/deleted)
 - **Documents**: Files uploaded to sessions with chunk counts and metadata
-- **TokenBlacklist**: JWT token revocation for logout functionality
+- **AuthSession**: Stateful session tokens for user authentication
 
 #### Vector Database:
 - Session-isolated Chroma collections named: `user_{user_id}_session_{session_id}`
@@ -180,7 +180,7 @@ PDFChat now supports a sophisticated session management system similar to ChatGP
 |--------|---------|
 | `models.py` | SQLAlchemy ORM models (User, Session, Document, TokenBlacklist) |
 | `database.py` | Database connection and session management |
-| `auth_service.py` | JWT token generation, password hashing, token validation |
+| `auth_service.py` | Session token generation, password hashing, validation |
 | `session_lifecycle.py` | Session state machine and auto-archival policies |
 | `sessionManager.py` | Session CRUD operations with ownership verification |
 | `vectorDB.py` | Session-isolated vector store management |
