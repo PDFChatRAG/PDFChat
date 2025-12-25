@@ -9,13 +9,13 @@ def get_current_user(
     db: SQLSession = Depends(get_db),
 ) -> Tuple[str, str]:
 
-    if not authorization or not authorization.startswith("Bearer "):
+    if not authorization:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authorization header",
         )
     
-    token = authorization[7:]  # Remove "Bearer " prefix
+    token = authorization
     
     session = AuthService.get_session(db, token)
     

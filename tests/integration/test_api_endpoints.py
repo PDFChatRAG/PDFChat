@@ -96,7 +96,7 @@ class TestAuthenticationEndpoints:
         """Test logout with token revocation."""
         response = client.post(
             "/auth/logout",
-            headers={"Authorization": f"Bearer {valid_auth_token}"},
+            headers={"Authorization": f"{valid_auth_token}"},
         )
 
         assert response.status_code == 200
@@ -115,7 +115,7 @@ class TestSessionManagementEndpoints:
         """Test creating a session."""
         response = client.post(
             "/sessions",
-            headers={"Authorization": f"Bearer {valid_auth_token}"},
+            headers={"Authorization": f"{valid_auth_token}"},
             json={
                 "title": "My New Session",
                 "metadata": {"model": "gemini"},
@@ -139,7 +139,7 @@ class TestSessionManagementEndpoints:
         """Test creating session with invalid token."""
         response = client.post(
             "/sessions",
-            headers={"Authorization": "Bearer invalid.token.here"},
+            headers={"Authorization": "invalid.token.here"},
             json={"title": "My New Session"},
         )
 
@@ -149,7 +149,7 @@ class TestSessionManagementEndpoints:
         """Test getting sessions list."""
         response = client.get(
             "/sessions",
-            headers={"Authorization": f"Bearer {valid_auth_token}"},
+            headers={"Authorization": f"{valid_auth_token}"},
         )
 
         assert response.status_code == 200
@@ -160,7 +160,7 @@ class TestSessionManagementEndpoints:
         """Test filtering sessions by status."""
         response = client.get(
             "/sessions?status_filter=ACTIVE",
-            headers={"Authorization": f"Bearer {valid_auth_token}"},
+            headers={"Authorization": f"{valid_auth_token}"},
         )
 
         assert response.status_code == 200
@@ -171,7 +171,7 @@ class TestSessionManagementEndpoints:
         """Test archiving a session."""
         response = client.post(
             f"/sessions/{test_session_data.id}/archive",
-            headers={"Authorization": f"Bearer {valid_auth_token}"},
+            headers={"Authorization": f"{valid_auth_token}"},
         )
 
         assert response.status_code == 200
@@ -187,7 +187,7 @@ class TestSessionManagementEndpoints:
 
         response = client.post(
             f"/sessions/{test_session_data.id}/reactivate",
-            headers={"Authorization": f"Bearer {valid_auth_token}"},
+            headers={"Authorization": f"{valid_auth_token}"},
         )
 
         assert response.status_code == 200
@@ -201,7 +201,7 @@ class TestSessionManagementEndpoints:
         with patch("api.VectorDBService.delete_session_collection"):
             response = client.delete(
                 f"/sessions/{test_session_data.id}",
-                headers={"Authorization": f"Bearer {valid_auth_token}"},
+                headers={"Authorization": f"{valid_auth_token}"},
             )
 
             assert response.status_code == 200
@@ -225,7 +225,7 @@ class TestChatEndpoints:
 
         response = client.post(
             "/chat",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"{token}"},
             json={"message": "What is this document about?"},
         )
 
@@ -249,7 +249,7 @@ class TestChatEndpoints:
         
         response = client.post(
             "/chat",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"{token}"},
             json={"message": ""},
         )
 
@@ -266,7 +266,7 @@ class TestConversationHistoryEndpoints:
         
         response = client.get(
             f"/sessions/{test_session_data.id}/chat-history",
-            headers={"Authorization": f"Bearer {valid_auth_token}"},
+            headers={"Authorization": f"{valid_auth_token}"},
         )
 
         assert response.status_code == 200
@@ -282,7 +282,7 @@ class TestConversationHistoryEndpoints:
 
         response = client.get(
             f"/sessions/{test_session_data.id}/chat-history/paginated?page=0&page_size=10",
-            headers={"Authorization": f"Bearer {valid_auth_token}"},
+            headers={"Authorization": f"{valid_auth_token}"},
         )
 
         assert response.status_code == 200
@@ -306,7 +306,7 @@ class TestConversationHistoryEndpoints:
         
         response = client.get(
             "/sessions/99999/chat-history",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"{token}"},
         )
 
         assert response.status_code == 404
@@ -323,7 +323,7 @@ class TestFileUploadEndpoints:
             
             response = client.post(
                 f"/sessions/{test_session_data.id}/upload",
-                headers={"Authorization": f"Bearer {valid_auth_token}"},
+                headers={"Authorization": f"{valid_auth_token}"},
                 files={"file": ("test.pdf", b"%PDF-1.4...", "application/pdf")},
             )
 
@@ -337,7 +337,7 @@ class TestFileUploadEndpoints:
             
             response = client.post(
                 f"/sessions/{test_session_data.id}/upload",
-                headers={"Authorization": f"Bearer {valid_auth_token}"},
+                headers={"Authorization": f"{valid_auth_token}"},
                 files={"file": ("test.docx", b"PK\x03\x04...", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
             )
 
@@ -350,7 +350,7 @@ class TestFileUploadEndpoints:
             
             response = client.post(
                 f"/sessions/{test_session_data.id}/upload",
-                headers={"Authorization": f"Bearer {valid_auth_token}"},
+                headers={"Authorization": f"{valid_auth_token}"},
                 files={"file": ("test.txt", b"This is test content", "text/plain")},
             )
 
@@ -360,7 +360,7 @@ class TestFileUploadEndpoints:
         """Test uploading unsupported file type."""
         response = client.post(
             f"/sessions/{test_session_data.id}/upload",
-            headers={"Authorization": f"Bearer {valid_auth_token}"},
+            headers={"Authorization": f"{valid_auth_token}"},
             files={"file": ("test.exe", b"fake executable", "application/x-msdownload")},
         )
 
@@ -379,7 +379,7 @@ class TestFileUploadEndpoints:
         """Test uploading to nonexistent session."""
         response = client.post(
             "/sessions/99999/upload",
-            headers={"Authorization": f"Bearer {valid_auth_token}"},
+            headers={"Authorization": f"{valid_auth_token}"},
             files={"file": ("test.txt", b"content", "text/plain")},
         )
 
@@ -442,7 +442,7 @@ class TestEndpointSecurity:
         """Test using expired token."""
         response = client.get(
             "/sessions",
-            headers={"Authorization": f"Bearer {expired_auth_token}"},
+            headers={"Authorization": f"{expired_auth_token}"},
         )
 
         assert response.status_code == 401
@@ -458,7 +458,7 @@ class TestEndpointSecurity:
         # This route /sessions/{id} does not exist, so let's try upload or archive which checks ownership
         response = client.post(
             f"/sessions/{another_session.id}/archive",
-            headers={"Authorization": f"Bearer {valid_auth_token}"},
+            headers={"Authorization": f"{valid_auth_token}"},
         )
 
         assert response.status_code == 403 or response.status_code == 404
