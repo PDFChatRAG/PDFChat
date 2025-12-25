@@ -155,16 +155,16 @@ def logout(
     authorization: Annotated[str, Header()] = None,
     db: SQLSession = Depends(get_db)
 ):
-    if not authorization or not authorization.startswith("Bearer "):
+    if not authorization:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header",
+            detail="Missing authorization header",
         )
     
-    token = authorization[7:]  # Remove "Bearer " prefix
+    token = authorization
     AuthService.delete_session(db, token)
 
-    return {"status": "logged out"}
+    return {"status": "You have successfully logged out"}
 
 
 # ============================================================================
