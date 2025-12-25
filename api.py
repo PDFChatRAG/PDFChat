@@ -175,11 +175,17 @@ def logout(
 @app.post("/sessions", response_model=SessionResponseDTO)
 def create_session(
     current_user: tuple = Depends(get_current_user),
+    authorization: Annotated[str, Header()] = None,
     db: SQLSession = Depends(get_db),
 ):
     user_id, _ = current_user
 
     session = SessionManager.create_session(user_id, db)
+
+    # Update current auth token to point to this new session
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+        AuthService.update_session_ref(db, token, session.id)
 
     return SessionResponseDTO(session_id=session.id)
 
@@ -236,6 +242,7 @@ def archive_session(
 def reactivate_session(
     session_id: str,
     current_user: tuple = Depends(get_current_user),
+    authorization: Annotated[str, Header()] = None,
     db: SQLSession = Depends(get_db),
 ):
     user_id, _ = current_user
@@ -243,6 +250,11 @@ def reactivate_session(
     session = SessionManager.reactivate_session(session_id, user_id, db)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    # Update current auth token to point to this reactivated session
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+        AuthService.update_session_ref(db, token, session.id)
 
     return {"status": "active", "session_id": session_id}
 
