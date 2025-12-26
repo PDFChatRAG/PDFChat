@@ -183,8 +183,11 @@ def create_session(
     session = SessionManager.create_session(user_id, db)
 
     # Update current auth token to point to this new session
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization[7:]
+    # Update current auth token to point to this new session
+    if authorization:
+        token = authorization
+        if token.startswith("Bearer "):
+            token = token[7:]
         AuthService.update_session_ref(db, token, session.id)
 
     return SessionResponseDTO(session_id=session.id)
@@ -252,8 +255,11 @@ def reactivate_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Update current auth token to point to this reactivated session
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization[7:]
+    # Update current auth token to point to this new session
+    if authorization:
+        token = authorization
+        if token.startswith("Bearer "):
+            token = token[7:]
         AuthService.update_session_ref(db, token, session.id)
 
     return {"status": "active", "session_id": session_id}

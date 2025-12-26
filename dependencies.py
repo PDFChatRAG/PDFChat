@@ -16,6 +16,8 @@ def get_current_user(
         )
     
     token = authorization
+    if token.startswith("Bearer "):
+        token = token[7:]
     
     session = AuthService.get_session(db, token)
     
