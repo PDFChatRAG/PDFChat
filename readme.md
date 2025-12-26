@@ -15,7 +15,7 @@ PDFChat now includes a FastAPI backend for easy integration with web frontends (
    ```
 2. **Start the API server**
    ```bash
-   uvicorn backend.api:app --reload
+   uvicorn api:app --reload
    ```
    The API will be available at [http://127.0.0.1:8000](http://127.0.0.1:8000)
 3. **Interactive API docs**

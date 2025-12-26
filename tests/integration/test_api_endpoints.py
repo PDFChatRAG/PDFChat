@@ -139,7 +139,7 @@ class TestSessionManagementEndpoints:
         """Test creating session with invalid token."""
         response = client.post(
             "/sessions",
-            headers={"Authorization": "Bearer invalid.token.here"},
+            headers={"Authorization": "invalid.token.here"},
             json={"title": "My New Session"},
         )
 

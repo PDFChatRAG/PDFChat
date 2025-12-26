@@ -81,3 +81,11 @@ class AuthService:
         if session:
             db.delete(session)
             db.commit()
+
+    @staticmethod
+    def update_session_ref(db: SQLSession, token: str, new_chat_session_id: str) -> None:
+        """Updates the chat session ID associated with an auth token."""
+        session = db.query(AuthSession).filter(AuthSession.token == token).first()
+        if session:
+            session.chat_session_id = new_chat_session_id
+            db.commit()
