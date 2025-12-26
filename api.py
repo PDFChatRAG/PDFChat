@@ -347,9 +347,11 @@ def get_chat_history(
     conv_data = get_session_conversation(session_id, checkpointer)
     messages = conv_data.get("messages", [])
 
-   
+    # Filter to only include user and assistant messages with non-empty content
+    filtered_messages = [msg for msg in messages if msg.get("role") in ("user", "assistant") and msg.get("content")]
+    
     normalized_messages = []
-    for msg in messages:
+    for msg in filtered_messages:
         normalized_msg = msg.copy()
         if isinstance(msg.get("content"), list):
             # Join all text blocks
@@ -386,12 +388,15 @@ def get_chat_history_paginated(
     # Get conversation from checkpoints
     conv_data = get_session_conversation(session_id, checkpointer)
     all_messages = conv_data.get("messages", [])
-    total_count = len(all_messages)
+    
+    # Filter to only include user and assistant messages with non-empty content
+    filtered_messages = [msg for msg in all_messages if msg.get("role") in ("user", "assistant") and msg.get("content")]
+    total_count = len(filtered_messages)
 
     # Paginate results
     start_idx = page * page_size
     end_idx = start_idx + page_size
-    paginated_messages = all_messages[start_idx:end_idx]
+    paginated_messages = filtered_messages[start_idx:end_idx]
 
     total_pages = (total_count + page_size - 1) // page_size
     has_more = page < total_pages - 1
