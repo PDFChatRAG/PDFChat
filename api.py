@@ -294,7 +294,6 @@ def chat(
     db: SQLSession = Depends(get_db),
 ):
     user_id, session_id = current_user
-
     # Verify session ownership
     session = SessionManager.get_session(session_id, user_id, db)
     if not session:
@@ -346,10 +345,23 @@ def get_chat_history(
 
     # Get conversation from checkpoints
     conv_data = get_session_conversation(session_id, checkpointer)
+    messages = conv_data.get("messages", [])
+
+   
+    normalized_messages = []
+    for msg in messages:
+        normalized_msg = msg.copy()
+        if isinstance(msg.get("content"), list):
+            # Join all text blocks
+            content_list = msg.get("content", [])
+            normalized_msg["content"] = " ".join([
+                block.get("text", "") for block in content_list if isinstance(block, dict)
+            ])
+        normalized_messages.append(normalized_msg)
     
     return ConversationHistoryDTO(
         session_id=session_id,
-        messages=conv_data.get("messages", []),
+        messages=normalized_messages,
         checkpoint_count=conv_data.get("checkpoint_count", 0),
         message_count=conv_data.get("message_count", 0),
     )
