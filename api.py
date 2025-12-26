@@ -294,7 +294,6 @@ def chat(
     db: SQLSession = Depends(get_db),
 ):
     user_id, session_id = current_user
-    print("session_id:", session_id)
     # Verify session ownership
     session = SessionManager.get_session(session_id, user_id, db)
     if not session:
