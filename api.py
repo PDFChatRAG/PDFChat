@@ -29,7 +29,7 @@ from utils.conversation_helper import get_session_conversation
 logger = logging.getLogger(__name__)
 
 # Constants
-MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 ALLOWED_FILE_TYPES = {".pdf", ".docx", ".txt"}
 CLEANUP_JOB_INTERVAL_HOURS = 24  # Run cleanup daily
 
@@ -459,7 +459,7 @@ async def upload_file(
     if len(file_content) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail="File too large. Max size is 100MB.",
+            detail="File too large. Max size is 20MB.",
         )
 
     # Save to temporary file

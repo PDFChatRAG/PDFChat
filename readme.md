@@ -25,7 +25,7 @@ PDFChat now includes a FastAPI backend for easy integration with web frontends (
 
 - `POST /session` — Start a new chat session. Request: `{ "user_id": "..." }` Response: `{ "session_id": "..." }`
 - `POST /chat` — Send a message. Request: `{ "session_id": "...", "message": "..." }` Response: `{ "response": "..." }`
-- `POST /upload` — Upload a PDF, DOCX, or TXT file for processing. (Max 100MB)
+- `POST /upload` — Upload a PDF, DOCX, or TXT file for processing. (Max 20MB)
 
 You can use these endpoints from your frontend or API client.
 
