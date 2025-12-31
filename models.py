@@ -129,3 +129,26 @@ class AuthSession(Base):
 
     def __repr__(self):
         return f"<AuthSession(token={self.token}, user_id={self.user_id})>"
+
+
+class VerificationCode(Base):
+    """Verification codes for password reset and email verification."""
+
+    __tablename__ = "verification_codes"
+    __table_args__ = (Index("ix_verification_codes_user", "user_id"),)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    code = Column(String(10), nullable=False, index=True)
+    purpose = Column(String(50), nullable=False)  # 'password_reset', 'email_verify'
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used = Column(Integer, default=0)  # 0 = not used, 1 = used
+    attempts = Column(Integer, default=0)  # Rate limiting
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    def __repr__(self):
+        return f"<VerificationCode(id={self.id}, user_id={self.user_id}, purpose={self.purpose})>"

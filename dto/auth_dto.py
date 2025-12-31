@@ -28,3 +28,20 @@ class UserResponseDTO(BaseModel):
     id: str
     email: str
     created_at: datetime
+
+
+class RequestResetCodeDTO(BaseModel):
+    """Request body for requesting password reset code."""
+    email: EmailStr
+
+
+class VerifyResetCodeDTO(BaseModel):
+    """Request body for verifying reset code."""
+    email: EmailStr
+    code: str
+
+
+class ResetPasswordDTO(BaseModel):
+    """Request body for resetting password."""
+    reset_token: str
+    new_password: str
