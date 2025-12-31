@@ -108,6 +108,47 @@ class ChatBot:
             raise
 
 
+def generate_session_title(first_message: str) -> str:
+    """Generate a concise title from the first user message.
+    
+    Args:
+        first_message: The first message from the user
+        
+    Returns:
+        A short descriptive title
+    """
+    try:
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            return "New Conversation"
+        
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash-exp", 
+            temperature=0
+        )
+        
+        prompt = f"""Generate a short, descriptive title for a conversation that starts with:
+"{first_message}"
+
+Return only the title, nothing else. Do not use quotes."""
+        
+        response = llm.invoke(prompt)
+        title = response.content.strip()
+        
+        # Remove quotes if present
+        title = title.strip('"\"').strip("'")
+        
+        # Limit to 60 characters
+        if len(title) > 60:
+            title = title[:57] + "..."
+            
+        return title if title else "New Conversation"
+        
+    except Exception as e:
+        logger.warning(f"Failed to generate session title: {e}")
+        return "New Conversation"
+
+
 def create_session_chatbot(user_id: str, session_id: str, checkpointer: Any) -> ChatBot:
 
     chatbot = ChatBot(user_id, session_id)
