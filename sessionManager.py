@@ -42,7 +42,7 @@ class SessionManager:
 
         session = Session(
             user_id=user_id,
-            title=title or f"Session {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}",
+            title=title or "New Conversation",
             status=SessionState.ACTIVE,
             metadata_=metadata or {},
         )

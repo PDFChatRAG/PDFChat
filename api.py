@@ -19,7 +19,7 @@ from chatBot import create_session_chatbot
 from sessionManager import SessionManager
 from session_lifecycle import SessionState
 from vectorDB import VectorDBService
-from dto.session_dto import SessionResponseDTO
+from dto.session_dto import SessionResponseDTO, UpdateSessionTitleDTO
 from dto.chat_dto import ChatRequestDTO, ChatResponseDTO
 from dto.conversation_dto import ConversationHistoryDTO, PaginatedConversationDTO
 from dto.auth_dto import UserRegisterDTO, UserLoginDTO, TokenResponseDTO, UserResponseDTO
@@ -282,6 +282,43 @@ def delete_session(
     return {"status": "deleted", "session_id": session_id}
 
 
+@app.patch("/sessions/{session_id}/title")
+def update_session_title(
+    session_id: str,
+    req: UpdateSessionTitleDTO,
+    current_user: tuple = Depends(get_current_user),
+    db: SQLSession = Depends(get_db),
+):
+    """Update the title of a session.
+    
+    Args:
+        session_id: The session ID
+        req: Request body with new title (1-50 characters)
+        
+    Returns:
+        Updated session title
+    """
+    user_id, _ = current_user
+    
+    session = SessionManager.get_session(session_id, user_id, db)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Validate and sanitize title
+    stripped_title = req.title.strip()
+    if len(stripped_title) < 1 or len(stripped_title) > 50:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Title must be between 1 and 50 characters after removing whitespace"
+        )
+    
+    session.title = stripped_title
+    db.commit()
+    
+    logger.info(f"Updated title for session {session_id}: {session.title}")
+    return {"status": "updated", "session_id": session_id, "title": session.title}
+
+
 # ============================================================================
 # CHAT ENDPOINTS
 # ============================================================================
@@ -293,6 +330,8 @@ def chat(
     current_user: tuple = Depends(get_current_user),
     db: SQLSession = Depends(get_db),
 ):
+    global checkpointer
+    
     user_id, session_id = current_user
     # Verify session ownership
     session = SessionManager.get_session(session_id, user_id, db)
@@ -307,11 +346,24 @@ def chat(
 
     SessionManager.update_session_timestamp(session_id, user_id, db)
 
+    # Ensure checkpointer is initialized
+    if not checkpointer:
+         memory_db = os.getenv("AGENT_MEMORY_DB", "agent_memory.db")
+         checkpointer = SqliteSaver.from_conn_string(memory_db).__enter__()
+
+    print("session title:", session.title)
+    # Check if this is the first message and generate title
+    conv_data = get_session_conversation(session_id, checkpointer)
+    message_count = conv_data.get("message_count", 0)
+    
+    if message_count == 0 and session.title == "New Conversation":
+        from chatBot import generate_session_title
+        new_title = generate_session_title(req.message)
+        session.title = new_title
+        db.commit()
+        logger.info(f"Generated title for session {session_id}: {new_title}")
+
     try:
-        global checkpointer
-        if not checkpointer:
-             memory_db = os.getenv("AGENT_MEMORY_DB", "agent_memory.db")
-             checkpointer = SqliteSaver.from_conn_string(memory_db).__enter__()
 
         chatbot = create_session_chatbot(user_id, session_id, checkpointer)
         response = chatbot.chat(req.message)
