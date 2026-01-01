@@ -110,6 +110,8 @@ class EmailService:
             logger.error("Cannot send email: RESEND_API_KEY not configured")
             return False
 
+        subject = "Your PDFChat Password Was Changed"
+        
         html_content = """
         <!DOCTYPE html>
         <html>
@@ -120,7 +122,7 @@ class EmailService:
         <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
             <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                 <div style="background-color: #28a745; color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center;">
-                    <h1 style="margin: 0; font-size: 28px;">✓ Password Reset Successful</h1>
+                    <h1 style="margin: 0; font-size: 28px;">Password Changed Successfully</h1>
                 </div>
                 
                 <div style="padding: 40px 30px;">
@@ -147,10 +149,9 @@ class EmailService:
             params = {
                 "from": self.from_email,
                 "to": [to_email],
-                "subject": "Password Reset Confirmation",
+                "subject": subject,
                 "html": html_content
             }
-            
             email = resend.Emails.send(params)
             logger.info(f"Password reset confirmation sent to {to_email}")
             return True

@@ -377,7 +377,12 @@ def reset_password(
     
     # Send confirmation email
     email_service = EmailService()
-    email_service.send_password_reset_confirmation(user.email)
+    email_sent = email_service.send_password_reset_confirmation(user.email)
+    
+    if email_sent:
+        logger.info(f"Password reset confirmation email sent successfully to {user.email}")
+    else:
+        logger.error(f"Failed to send password reset confirmation email to {user.email}")
     
     logger.info(f"Password reset successful for user {user.email}")
     
