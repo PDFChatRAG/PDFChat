@@ -12,6 +12,9 @@ pydantic-settings
 email-validator
 bcrypt
 
+# Email Service
+resend
+
 # AI & LLM
 langchain
 langchain-community

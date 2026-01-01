@@ -1,7 +1,9 @@
 import os
 import tempfile
 import logging
-from datetime import datetime, timezone
+import secrets
+import string
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Annotated
 from contextlib import asynccontextmanager
 
@@ -13,16 +15,25 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from database import init_db, get_db
-from models import User, SessionStatus
+from models import User, SessionStatus, VerificationCode, AuthSession
 from auth_service import AuthService
 from chatBot import create_session_chatbot
 from sessionManager import SessionManager
 from session_lifecycle import SessionState
 from vectorDB import VectorDBService
+from email_service import EmailService
 from dto.session_dto import SessionResponseDTO, UpdateSessionTitleDTO
 from dto.chat_dto import ChatRequestDTO, ChatResponseDTO
 from dto.conversation_dto import ConversationHistoryDTO, PaginatedConversationDTO
-from dto.auth_dto import UserRegisterDTO, UserLoginDTO, TokenResponseDTO, UserResponseDTO
+from dto.auth_dto import (
+    UserRegisterDTO,
+    UserLoginDTO,
+    TokenResponseDTO,
+    UserResponseDTO,
+    RequestResetCodeDTO,
+    VerifyResetCodeDTO,
+    ResetPasswordDTO,
+)
 from dependencies import get_current_user
 from utils.conversation_helper import get_session_conversation
 
@@ -165,6 +176,217 @@ def logout(
     AuthService.delete_session(db, token)
 
     return {"status": "You have successfully logged out"}
+
+
+@app.post("/auth/request-reset-code")
+def request_reset_code(
+    req: RequestResetCodeDTO,
+    db: SQLSession = Depends(get_db)
+):
+    """Request a password reset verification code.
+    
+    Sends a 6-digit code to the user's email if the account exists.
+    For security, always returns success even if email doesn't exist.
+    """
+    # Find user
+    user = db.query(User).filter(User.email == req.email).first()
+    
+    if not user:
+        # Don't reveal if email exists (security best practice)
+        logger.info(f"Password reset requested for non-existent email: {req.email}")
+        return {"status": "If the email exists, a verification code has been sent"}
+    
+    # Delete any existing unused codes for this user
+    db.query(VerificationCode).filter(
+        VerificationCode.user_id == user.id,
+        VerificationCode.purpose == "password_reset",
+        VerificationCode.used == 0
+    ).delete()
+    db.commit()
+    
+    # Generate 6-digit code
+    code = ''.join(secrets.choice(string.digits) for _ in range(6))
+    
+    # Create expiration time (10 minutes from now)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+    
+    # Store verification code
+    verification = VerificationCode(
+        user_id=user.id,
+        code=code,
+        purpose="password_reset",
+        expires_at=expires_at,
+        used=0,
+        attempts=0
+    )
+    db.add(verification)
+    db.commit()
+    
+    # Send email
+    email_service = EmailService()
+    email_sent = email_service.send_verification_code(user.email, code, "password reset")
+    
+    if email_sent:
+        logger.info(f"Password reset code sent to {user.email}")
+    else:
+        logger.error(f"Failed to send password reset code to {user.email}")
+    
+    return {"status": "If the email exists, a verification code has been sent"}
+
+
+@app.post("/auth/verify-reset-code")
+def verify_reset_code(
+    req: VerifyResetCodeDTO,
+    db: SQLSession = Depends(get_db)
+):
+    """Verify the reset code and return a temporary reset token.
+    
+    The reset token is valid for 15 minutes and can be used once to reset the password.
+    """
+    # Find user
+    user = db.query(User).filter(User.email == req.email).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification code"
+        )
+    
+    # Find valid verification code
+    verification = db.query(VerificationCode).filter(
+        VerificationCode.user_id == user.id,
+        VerificationCode.code == req.code,
+        VerificationCode.purpose == "password_reset",
+        VerificationCode.used == 0,
+        VerificationCode.expires_at > datetime.now(timezone.utc)
+    ).first()
+    
+    if not verification:
+        # Increment attempts if code exists but is wrong
+        existing_code = db.query(VerificationCode).filter(
+            VerificationCode.user_id == user.id,
+            VerificationCode.purpose == "password_reset",
+            VerificationCode.used == 0,
+            VerificationCode.expires_at > datetime.now(timezone.utc)
+        ).first()
+        
+        if existing_code:
+            existing_code.attempts += 1
+            
+            # Delete code after too many attempts
+            if existing_code.attempts >= 5:
+                db.delete(existing_code)
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Too many incorrect attempts. Please request a new code."
+                )
+            
+            db.commit()
+        
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification code"
+        )
+    
+    # Mark code as used
+    verification.used = 1
+    db.commit()
+    
+    # Generate temporary reset token (valid for 15 minutes)
+    reset_token = secrets.token_urlsafe(32)
+    
+    # Store reset token as a new verification entry
+    reset_token_entry = VerificationCode(
+        user_id=user.id,
+        code=reset_token,
+        purpose="reset_token",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+        used=0,
+        attempts=0
+    )
+    db.add(reset_token_entry)
+    db.commit()
+    
+    logger.info(f"Verification code validated for user {user.email}")
+    
+    return {
+        "status": "verified",
+        "reset_token": reset_token,
+        "expires_in": 900  # 15 minutes in seconds
+    }
+
+
+@app.post("/auth/reset-password")
+def reset_password(
+    req: ResetPasswordDTO,
+    db: SQLSession = Depends(get_db)
+):
+    """Reset password using the temporary reset token.
+    
+    The reset token is obtained from verify-reset-code endpoint.
+    """
+    # Validate password strength
+    if len(req.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters long"
+        )
+    
+    # Find valid reset token
+    reset_token_entry = db.query(VerificationCode).filter(
+        VerificationCode.code == req.reset_token,
+        VerificationCode.purpose == "reset_token",
+        VerificationCode.used == 0,
+        VerificationCode.expires_at > datetime.now(timezone.utc)
+    ).first()
+    
+    if not reset_token_entry:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token"
+        )
+    
+    # Get user
+    user = db.query(User).filter(User.id == reset_token_entry.user_id).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Update password
+    try:
+        user.hashed_password = AuthService.hash_password(req.new_password)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password is too long"
+        )
+    
+    # Mark reset token as used
+    reset_token_entry.used = 1
+    
+    # Delete all auth sessions (force re-login)
+    db.query(AuthSession).filter(
+        AuthSession.user_id == user.id
+    ).delete()
+    
+    db.commit()
+    
+    # Send confirmation email
+    email_service = EmailService()
+    email_sent = email_service.send_password_reset_confirmation(user.email)
+    
+    if email_sent:
+        logger.info(f"Password reset confirmation email sent successfully to {user.email}")
+    else:
+        logger.error(f"Failed to send password reset confirmation email to {user.email}")
+    
+    logger.info(f"Password reset successful for user {user.email}")
+    
+    return {"status": "Password reset successful"}
 
 
 # ============================================================================
