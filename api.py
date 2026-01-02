@@ -33,6 +33,7 @@ from dto.auth_dto import (
     RequestResetCodeDTO,
     VerifyResetCodeDTO,
     ResetPasswordDTO,
+    GuestLoginDTO,
 )
 from dependencies import get_current_user
 from utils.conversation_helper import get_session_conversation
@@ -155,10 +156,80 @@ def login(req: UserLoginDTO, db: SQLSession = Depends(get_db)):
 
     return TokenResponseDTO(
         access_token=access_token,
-        session_id=session_id
+        session_id=session_id,
+        user_id=user.id
     )
 
 
+
+
+@app.post("/auth/guest-login", response_model=TokenResponseDTO)
+def guest_login(req: GuestLoginDTO = None, db: SQLSession = Depends(get_db)):
+    """Login as a guest user.
+    
+    - First time (no user_id): Creates a new guest user
+    - Returning guest (with user_id): Reuses existing guest account
+    
+    The user_id should be stored in localStorage by the frontend.
+    """
+    global checkpointer
+    if not checkpointer:
+         memory_db = os.getenv("AGENT_MEMORY_DB", "agent_memory.db")
+         checkpointer = SqliteSaver.from_conn_string(memory_db).__enter__()
+
+    guest_user = None
+    
+    # Check if returning guest with existing user_id
+    if req and req.user_id:
+        guest_user = db.query(User).filter(
+            User.id == req.user_id,
+            User.is_guest == 1
+        ).first()
+        
+        if guest_user:
+            logger.info(f"Returning guest user: {guest_user.id}")
+        else:
+            logger.warning(f"Invalid guest user_id provided: {req.user_id}, creating new guest")
+    
+    # Create new guest if no valid user found
+    if not guest_user:
+        guest_user = User(
+            email=None,
+            hashed_password=None,
+            is_guest=1
+        )
+        db.add(guest_user)
+        db.commit()
+        db.refresh(guest_user)
+        logger.info(f"New guest user created: {guest_user.id}")
+
+    # For guests, delete all existing sessions to save storage costs
+    # Guests get a fresh session each time they login
+    from models import Session as DBSession
+    existing_sessions = db.query(DBSession).filter(
+        DBSession.user_id == guest_user.id
+    ).all()
+    
+    for old_session in existing_sessions:
+        # Delete session and associated data
+        SessionManager.delete_session(
+            old_session.id, guest_user.id, db, VectorDBService
+        )
+    
+    logger.info(f"Deleted {len(existing_sessions)} old session(s) for guest {guest_user.id}")
+
+    # Create fresh session for guest
+    session = SessionManager.create_session(guest_user.id, db)
+    session_id = session.id
+
+    # Create auth token
+    access_token = AuthService.create_session(db, guest_user.id, session_id)
+
+    return TokenResponseDTO(
+        access_token=access_token,
+        session_id=session_id,
+        user_id=guest_user.id
+    )
 
 
 @app.post("/auth/logout")

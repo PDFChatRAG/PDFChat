@@ -1,5 +1,6 @@
 """Authentication Data Transfer Objects."""
 
+from typing import Optional
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 
@@ -21,6 +22,7 @@ class TokenResponseDTO(BaseModel):
     access_token: str
     token_type: str = "bearer"
     session_id: str
+    user_id: Optional[str] = None  # For guest users to store and reuse
 
 
 class UserResponseDTO(BaseModel):
@@ -45,3 +47,8 @@ class ResetPasswordDTO(BaseModel):
     """Request body for resetting password."""
     reset_token: str
     new_password: str
+
+
+class GuestLoginDTO(BaseModel):
+    """Request body for guest login."""
+    user_id: Optional[str] = None  # Optional: for returning guests to reuse their account

@@ -14,8 +14,9 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    hashed_password = Column(String(255), nullable=False)
+    email = Column(String(255), unique=True, nullable=True, index=True)
+    hashed_password = Column(String(255), nullable=True)
+    is_guest = Column(Integer, default=0, nullable=False)  # 0 = registered, 1 = guest
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
