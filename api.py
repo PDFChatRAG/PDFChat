@@ -161,6 +161,64 @@ def login(req: UserLoginDTO, db: SQLSession = Depends(get_db)):
 
 
 
+@app.post("/auth/guest-login", response_model=TokenResponseDTO)
+def guest_login(db: SQLSession = Depends(get_db)):
+    """Login as a guest user using a shared guest account.
+    
+    All guests share the same account (testing@gmail.com).
+    Each login deletes old sessions to save storage costs.
+    """
+    global checkpointer
+    if not checkpointer:
+         memory_db = os.getenv("AGENT_MEMORY_DB", "agent_memory.db")
+         checkpointer = SqliteSaver.from_conn_string(memory_db).__enter__()
+
+    GUEST_EMAIL = "testing@gmail.com"
+    GUEST_PASSWORD = "guest123"
+    
+    # Find or create shared guest account
+    guest_user = db.query(User).filter(User.email == GUEST_EMAIL).first()
+    
+    if not guest_user:
+        # Create shared guest account if it doesn't exist
+        guest_user = User(
+            email=GUEST_EMAIL,
+            hashed_password=AuthService.hash_password(GUEST_PASSWORD),
+        )
+        db.add(guest_user)
+        db.commit()
+        db.refresh(guest_user)
+        logger.info(f"Created shared guest account: {GUEST_EMAIL}")
+    
+    # For guests, delete all existing sessions to save storage costs
+    # Guests get a fresh session each time they login
+    from models import Session as DBSession
+    existing_sessions = db.query(DBSession).filter(
+        DBSession.user_id == guest_user.id
+    ).all()
+    
+    for old_session in existing_sessions:
+        # Delete session and associated data
+        SessionManager.delete_session(
+            old_session.id, guest_user.id, db, VectorDBService
+        )
+    
+    if existing_sessions:
+        logger.info(f"Deleted {len(existing_sessions)} old guest session(s)")
+
+    # Create fresh session for guest
+    session = SessionManager.create_session(guest_user.id, db)
+    session_id = session.id
+
+    # Create auth token
+    access_token = AuthService.create_session(db, guest_user.id, session_id)
+
+    return TokenResponseDTO(
+        access_token=access_token,
+        session_id=session_id
+    )
+
+
 @app.post("/auth/logout")
 def logout(
     authorization: Annotated[str, Header()] = None,
