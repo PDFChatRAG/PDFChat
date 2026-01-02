@@ -165,44 +165,35 @@ def login(req: UserLoginDTO, db: SQLSession = Depends(get_db)):
 
 @app.post("/auth/guest-login", response_model=TokenResponseDTO)
 def guest_login(req: GuestLoginDTO = None, db: SQLSession = Depends(get_db)):
-    """Login as a guest user.
+    """Login as a guest user using a shared guest account.
     
-    - First time (no user_id): Creates a new guest user
-    - Returning guest (with user_id): Reuses existing guest account
+    All guests share the same account (testing@gmail.com).
+    Each login deletes old sessions to save storage costs.
     
-    The user_id should be stored in localStorage by the frontend.
+    The user_id should be stored in localStorage by the frontend to identify returning guests.
     """
     global checkpointer
     if not checkpointer:
          memory_db = os.getenv("AGENT_MEMORY_DB", "agent_memory.db")
          checkpointer = SqliteSaver.from_conn_string(memory_db).__enter__()
 
-    guest_user = None
+    GUEST_EMAIL = "testing@gmail.com"
+    GUEST_PASSWORD = "guest123"
     
-    # Check if returning guest with existing user_id
-    if req and req.user_id:
-        guest_user = db.query(User).filter(
-            User.id == req.user_id,
-            User.is_guest == 1
-        ).first()
-        
-        if guest_user:
-            logger.info(f"Returning guest user: {guest_user.id}")
-        else:
-            logger.warning(f"Invalid guest user_id provided: {req.user_id}, creating new guest")
+    # Find or create shared guest account
+    guest_user = db.query(User).filter(User.email == GUEST_EMAIL).first()
     
-    # Create new guest if no valid user found
     if not guest_user:
+        # Create shared guest account if it doesn't exist
         guest_user = User(
-            email=None,
-            hashed_password=None,
-            is_guest=1
+            email=GUEST_EMAIL,
+            hashed_password=AuthService.hash_password(GUEST_PASSWORD),
         )
         db.add(guest_user)
         db.commit()
         db.refresh(guest_user)
-        logger.info(f"New guest user created: {guest_user.id}")
-
+        logger.info(f"Created shared guest account: {GUEST_EMAIL}")
+    
     # For guests, delete all existing sessions to save storage costs
     # Guests get a fresh session each time they login
     from models import Session as DBSession
@@ -216,7 +207,8 @@ def guest_login(req: GuestLoginDTO = None, db: SQLSession = Depends(get_db)):
             old_session.id, guest_user.id, db, VectorDBService
         )
     
-    logger.info(f"Deleted {len(existing_sessions)} old session(s) for guest {guest_user.id}")
+    if existing_sessions:
+        logger.info(f"Deleted {len(existing_sessions)} old guest session(s)")
 
     # Create fresh session for guest
     session = SessionManager.create_session(guest_user.id, db)
