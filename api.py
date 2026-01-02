@@ -33,7 +33,6 @@ from dto.auth_dto import (
     RequestResetCodeDTO,
     VerifyResetCodeDTO,
     ResetPasswordDTO,
-    GuestLoginDTO,
 )
 from dependencies import get_current_user
 from utils.conversation_helper import get_session_conversation
@@ -156,21 +155,18 @@ def login(req: UserLoginDTO, db: SQLSession = Depends(get_db)):
 
     return TokenResponseDTO(
         access_token=access_token,
-        session_id=session_id,
-        user_id=user.id
+        session_id=session_id
     )
 
 
 
 
 @app.post("/auth/guest-login", response_model=TokenResponseDTO)
-def guest_login(req: GuestLoginDTO = None, db: SQLSession = Depends(get_db)):
+def guest_login(db: SQLSession = Depends(get_db)):
     """Login as a guest user using a shared guest account.
     
     All guests share the same account (testing@gmail.com).
     Each login deletes old sessions to save storage costs.
-    
-    The user_id should be stored in localStorage by the frontend to identify returning guests.
     """
     global checkpointer
     if not checkpointer:
@@ -219,8 +215,7 @@ def guest_login(req: GuestLoginDTO = None, db: SQLSession = Depends(get_db)):
 
     return TokenResponseDTO(
         access_token=access_token,
-        session_id=session_id,
-        user_id=guest_user.id
+        session_id=session_id
     )
 
 
