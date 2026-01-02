@@ -92,6 +92,17 @@ app.add_middleware(
 
 
 # ============================================================================
+# HEALTH CHECK ENDPOINT
+# ============================================================================
+
+
+@app.get("/ping")
+def ping():
+    """Health check endpoint for monitoring application status."""
+    return {"status": "ok", "message": "PDFChat API is running"}
+
+
+# ============================================================================
 # AUTHENTICATION ENDPOINTS
 # ============================================================================
 
