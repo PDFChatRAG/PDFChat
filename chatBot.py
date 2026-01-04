@@ -37,7 +37,7 @@ class ChatBot:
 
         # Initialize model and embeddings
         self.model = ChatGoogleGenerativeAI(
-            model="gemini-3-pro-preview", temperature=0
+            model="gemini-3-flash-preview", temperature=0
         )
         self.embeddings = GoogleGenerativeAIEmbeddings(
             model="models/text-embedding-004"
