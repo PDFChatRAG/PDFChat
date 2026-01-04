@@ -61,7 +61,7 @@ class TestChatBot:
         assert bot.agent is not None
         
         mock_dependencies["llm"].assert_called_with(
-            model="gemini-3-pro-preview", temperature=0
+            model="gemini-3-flash-preview", temperature=0
         )
         mock_dependencies["retriever"].assert_called()
         mock_dependencies["agent"].assert_called()

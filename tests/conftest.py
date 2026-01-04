@@ -16,6 +16,13 @@ from auth_service import AuthService
 from database import get_db
 
 
+@pytest.fixture(autouse=True)
+def mock_env_vars():
+    """Set dummy environment variables for testing."""
+    with patch.dict(os.environ, {"GOOGLE_API_KEY": "dummy_key_for_testing"}):
+        yield
+
+
 @pytest.fixture(scope="session")
 def test_db():
     """Create an in-memory SQLite database for testing."""
