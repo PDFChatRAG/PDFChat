@@ -63,7 +63,9 @@ class ChatBot:
             checkpointer=self.checkpointer,
             system_prompt=(
                 "You are a helpful assistant. Use your tools to answer user queries. "
-                "Provide accurate, concise, and helpful responses based on the documents available."
+                "Provide accurate, concise, and helpful responses based on the documents available. "
+                "Do not claim to have access to any files unless they are explicitly returned by your tools. "
+                "If no documents are found, clearly state that no documents have been uploaded."
             ),
         )
 
